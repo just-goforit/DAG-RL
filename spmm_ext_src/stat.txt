@@ -1,0 +1,151 @@
+graph:
+    nodes: 26577 
+    edges: 72900
+Batch=1
+### gspmm_src_mul_e_sum
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                             Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                         aten::mm        28.90%      65.895ms        43.01%      98.076ms      24.519us          4000  
+                                 cudaLaunchKernel        12.62%      28.768ms        12.62%      28.768ms       2.877us         10000  
+                                        aten::add         8.94%      20.383ms        11.59%      26.419ms      13.210us          2000  
+                                     aten::matmul         7.24%      16.502ms        54.14%     123.458ms      30.864us          4000  
+                                     aten::linear         6.76%      15.421ms        63.02%     143.705ms      35.926us          4000  
+                                         cudaFree         5.85%      13.349ms         5.85%      13.349ms       6.675ms             2  
+                                  aten::transpose         4.52%      10.303ms         4.58%      10.434ms       1.304us          8000  
+                                      aten::empty         4.34%       9.905ms         4.34%       9.905ms       4.952us          2000  
+                                      aten::fill_         3.73%       8.503ms         6.44%      14.678ms       7.339us          2000  
+                                          aten::t         3.68%       8.391ms         5.55%      12.649ms       3.162us          4000  
+                                    aten::reshape         2.67%       6.093ms         3.72%       8.486ms       1.061us          8000  
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor         2.57%       5.853ms         2.57%       5.853ms       1.463us          4001  
+                                      aten::zeros         2.14%       4.888ms        14.62%      33.327ms      16.663us          2000  
+                               aten::_unsafe_view         1.99%       4.543ms         1.99%       4.543ms       1.136us          4000  
+                                      aten::zero_         1.88%       4.297ms         8.30%      18.927ms       9.463us          2000  
+                                       aten::view         1.82%       4.161ms         1.82%       4.161ms       0.520us          8000  
+                                       cudaMalloc         0.24%     549.000us         0.24%     549.000us     137.250us             4  
+                                 aten::as_strided         0.06%     142.000us         0.06%     142.000us       0.018us          8000  
+                             cudaGetSymbolAddress         0.04%      80.000us         0.04%      80.000us      80.000us             1  
+                            cudaStreamIsCapturing         0.00%       1.000us         0.00%       1.000us       1.000us             1  
+                           cudaDeviceGetAttribute         0.00%       0.000us         0.00%       0.000us       0.000us            14  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 228.027ms
+
+
+### vanilla(PyG)
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                             Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                 cudaLaunchKernel        16.94%     111.838ms        16.94%     111.838ms       5.084us         22000  
+                                         aten::mm        14.71%      97.066ms        20.71%     136.697ms      34.174us          4000  
+                               aten::scatter_add_         8.43%      55.626ms        11.76%      77.644ms      19.411us          4000  
+                                      aten::empty         5.74%      37.860ms         5.74%      37.860ms       4.732us          8000  
+                                      aten::fill_         4.43%      29.225ms         8.34%      55.073ms       9.179us          6000  
+                               aten::index_select         4.34%      28.626ms         8.64%      57.000ms      28.500us          2000  
+                                        aten::add         4.27%      28.186ms         5.55%      36.660ms      18.330us          2000  
+                                        aten::div         3.79%      25.040ms         5.03%      33.195ms      16.598us          2000  
+                                      aten::clamp         3.76%      24.834ms         6.59%      43.492ms      21.746us          2000  
+                                     aten::matmul         3.69%      24.368ms        27.01%     178.243ms      44.561us          4000  
+                                  aten::transpose         3.64%      24.020ms         3.69%      24.338ms       2.434us         10000  
+                                     aten::select         2.96%      19.531ms         2.97%      19.586ms       3.264us          6000  
+                                          aten::t         2.81%      18.559ms         3.54%      23.387ms       5.847us          4000  
+                                       aten::view         2.55%      16.833ms         2.55%      16.833ms       1.202us         14000  
+                                     aten::linear         1.98%      13.066ms        32.25%     212.871ms      53.218us          4000  
+                                         cudaFree         1.88%      12.432ms         1.88%      12.432ms       6.216ms             2  
+                                  aten::new_zeros         1.86%      12.251ms        13.33%      88.006ms      22.002us          4000  
+                                      aten::zero_         1.79%      11.843ms         7.70%      50.818ms      12.704us          4000  
+                                     aten::expand         1.66%      10.948ms         1.69%      11.150ms       2.788us          4000  
+                                    aten::reshape         1.61%      10.605ms         3.15%      20.819ms       2.082us         10000  
+                                  aten::new_empty         1.45%       9.543ms         5.30%      35.001ms       5.833us          6000  
+                               aten::_unsafe_view         1.31%       8.633ms         1.31%       8.633ms       2.158us          4000  
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor         1.30%       8.611ms         1.30%       8.611ms       2.152us          4001  
+                                    aten::resize_         1.19%       7.886ms         1.19%       7.886ms       3.943us          2000  
+                                   aten::new_ones         0.77%       5.064ms         5.19%      34.240ms      17.120us          2000  
+                                  aten::expand_as         0.74%       4.916ms         2.24%      14.775ms       3.694us          4000  
+                                 aten::as_strided         0.30%       1.948ms         0.30%       1.948ms       0.070us         28000  
+                                       cudaMalloc         0.09%     575.000us         0.09%     575.000us     143.750us             4  
+                             cudaGetSymbolAddress         0.01%      82.000us         0.01%      82.000us      82.000us             1  
+                            cudaStreamIsCapturing         0.00%       2.000us         0.00%       2.000us       2.000us             1  
+                                         aten::to         0.00%       0.000us         0.00%       0.000us       0.000us          2000  
+                           cudaDeviceGetAttribute         0.00%       0.000us         0.00%       0.000us       0.000us            14  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 660.017ms
+
+
+### spmm(PyG)
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                             Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                         aten::mm        27.57%      74.556ms        41.08%     111.086ms      27.771us          4000  
+                                 cudaLaunchKernel        12.48%      33.746ms        12.48%      33.746ms       4.218us          8000  
+                          torch_sparse::spmm_mean        11.62%      31.409ms        20.10%      54.343ms      27.172us          2000  
+                                        aten::add         8.78%      23.733ms        11.12%      30.071ms      15.036us          2000  
+                                     aten::matmul         6.51%      17.596ms        51.04%     137.993ms      34.498us          4000  
+                                  aten::transpose         5.35%      14.479ms         5.39%      14.564ms       1.456us         10000  
+                                     aten::linear         5.20%      14.060ms        59.41%     160.635ms      40.159us          4000  
+                                         cudaFree         5.05%      13.661ms         5.05%      13.661ms       6.830ms             2  
+                                          aten::t         3.81%      10.289ms         5.39%      14.579ms       3.645us          4000  
+                                      aten::empty         3.71%      10.018ms         3.71%      10.018ms       5.009us          2000  
+                                    aten::reshape         3.40%       9.205ms         4.67%      12.635ms       1.264us         10000  
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor         2.86%       7.743ms         2.86%       7.743ms       1.935us          4001  
+                               aten::_unsafe_view         1.82%       4.926ms         1.82%       4.926ms       1.232us          4000  
+                                       aten::view         1.57%       4.236ms         1.57%       4.236ms       0.424us         10000  
+                                       cudaMalloc         0.20%     551.000us         0.20%     551.000us     137.750us             4  
+                                 aten::as_strided         0.03%      92.000us         0.03%      92.000us       0.009us         10000  
+                             cudaGetSymbolAddress         0.03%      81.000us         0.03%      81.000us      81.000us             1  
+                           cudaDeviceGetAttribute         0.00%       1.000us         0.00%       1.000us       0.071us            14  
+                            cudaStreamIsCapturing         0.00%       1.000us         0.00%       1.000us       1.000us             1  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 270.383ms
+
+
+### zero-filled mm
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                             Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                 cudaLaunchKernel        91.32%        8.147s        91.32%        8.147s     814.666us         10000  
+                                     aten::linear         6.33%     564.569ms        92.18%        8.223s       2.056ms          4000  
+                                         aten::mm         1.18%     105.044ms        92.67%        8.267s       1.378ms          6000  
+                                        aten::add         0.27%      24.372ms         0.35%      31.385ms      15.693us          2000  
+                                     aten::matmul         0.23%      20.234ms        93.01%        8.298s       1.383ms          6000  
+                                         cudaFree         0.18%      15.627ms         0.18%      15.627ms       7.814ms             2  
+                                  aten::transpose         0.13%      11.306ms         0.13%      11.462ms       1.433us          8000  
+                                          aten::t         0.11%       9.494ms         0.16%      13.970ms       3.493us          4000  
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor         0.07%       6.257ms         0.07%       6.257ms       1.042us          6002  
+                                    aten::reshape         0.07%       5.999ms         0.10%       9.111ms       1.139us          8000  
+                               aten::_unsafe_view         0.06%       5.286ms         0.06%       5.286ms       1.321us          4000  
+                                       aten::view         0.06%       5.017ms         0.06%       5.017ms       0.627us          8000  
+                                       cudaMalloc         0.01%     730.000us         0.01%     730.000us     182.500us             4  
+                                 aten::as_strided         0.00%     169.000us         0.00%     169.000us       0.021us          8000  
+                             cudaGetSymbolAddress         0.00%     130.000us         0.00%     130.000us     130.000us             1  
+                            cudaStreamIsCapturing         0.00%       2.000us         0.00%       2.000us       2.000us             1  
+                           cudaDeviceGetAttribute         0.00%       1.000us         0.00%       1.000us       0.071us            14  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 8.921s
+
+
+### zero-filled bmm
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                             Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                 cudaLaunchKernel        91.60%        8.146s        91.60%        8.146s     814.634us         10000  
+                                     aten::linear         5.88%     522.743ms        92.53%        8.229s       2.057ms          4000  
+                                         aten::mm         0.66%      58.454ms        92.00%        8.182s       2.045ms          4000  
+                                        aten::bmm         0.54%      48.123ms         0.97%      85.853ms      42.926us          2000  
+                                     aten::matmul         0.38%      33.358ms        93.62%        8.326s       1.388ms          6000  
+                                        aten::add         0.27%      23.725ms         0.34%      30.023ms      15.011us          2000  
+                                         cudaFree         0.16%      14.484ms         0.16%      14.484ms       7.242ms             2  
+                                          aten::t         0.11%       9.896ms         0.16%      14.403ms       3.601us          4000  
+                                  aten::transpose         0.10%       8.459ms         0.10%       8.653ms       1.442us          6000  
+                                    aten::reshape         0.08%       7.302ms         0.10%       8.708ms       1.089us          8000  
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor         0.07%       6.087ms         0.07%       6.087ms       1.014us          6002  
+                                     aten::expand         0.06%       5.000ms         0.06%       5.000ms       1.250us          4000  
+                               aten::_unsafe_view         0.05%       4.492ms         0.05%       4.492ms       0.749us          6000  
+                                       aten::view         0.03%       2.231ms         0.03%       2.231ms       0.279us          8000  
+                                         aten::mT         0.02%       2.081ms         0.07%       6.219ms       3.110us          2000  
+                                       cudaMalloc         0.01%     568.000us         0.01%     568.000us     142.000us             4  
+                                 aten::as_strided         0.00%     210.000us         0.00%     210.000us       0.021us         10000  
+                             cudaGetSymbolAddress         0.00%      97.000us         0.00%      97.000us      97.000us             1  
+                            cudaStreamIsCapturing         0.00%       2.000us         0.00%       2.000us       2.000us             1  
+                           cudaDeviceGetAttribute         0.00%       0.000us         0.00%       0.000us       0.000us            14  
+-------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 8.894s
