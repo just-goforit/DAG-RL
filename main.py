@@ -1,6 +1,7 @@
 import os
 import json
 import torch
+from tqdm import tqdm
 from env.env_util import play
 from util.parse import get_args
 from colorama import Fore, Style
@@ -97,6 +98,52 @@ def save_model(model, save_dir:str, model_name:str):
         
     model.save(save_dir + model_name)
     
+class TqdmProgressCallback(BaseCallback):
+    """
+    使用 tqdm 显示训练进度的回调
+    """
+    def __init__(self, total_timesteps: int, update_freq: int = 1000):
+        super().__init__()
+        self.total_timesteps = total_timesteps
+        self.update_freq = update_freq
+        self.pbar = None
+        
+    def _on_training_start(self) -> None:
+        """训练开始时初始化 tqdm 进度条"""
+        self.pbar = tqdm(
+            total=self.total_timesteps,
+            desc="Training Progress",
+            unit="steps",
+            ncols=100,
+            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+        )
+        # 设置初始位置
+        if self.num_timesteps > 0:
+            self.pbar.update(self.num_timesteps)
+    
+    def _on_step(self) -> bool:
+        """每步更新进度条"""
+        if self.pbar is not None and self.num_timesteps % self.update_freq == 0:
+            # 更新进度条
+            current = self.num_timesteps
+            self.pbar.n = current
+            self.pbar.refresh()
+            
+            # 更新描述信息（如果有 logger 信息）
+            if hasattr(self.model, 'ep_info_buffer') and len(self.model.ep_info_buffer) > 0:
+                ep_info = self.model.ep_info_buffer[-1]
+                if 'r' in ep_info and 'l' in ep_info:
+                    self.pbar.set_postfix({
+                        'ep_reward': f"{ep_info['r']:.2f}",
+                        'ep_len': f"{ep_info['l']:.0f}"
+                    })
+        return True
+    
+    def _on_training_end(self) -> None:
+        """训练结束时关闭进度条"""
+        if self.pbar is not None:
+            self.pbar.close()
+
 class customEveryNTimesteps(EventCallback):
     """
     Trigger a callback every ``n_steps`` timesteps
@@ -339,11 +386,19 @@ if __name__ == '__main__':
         save_freq = int(args.save_freq * args.total_timesteps)
         checkpoint_on_event = CheckpointCallback(save_freq=1, save_path=save_dir, name_prefix=model_name)
         event_callback = customEveryNTimesteps(n_steps=save_freq, callback=checkpoint_on_event)
+        
+        # 创建 tqdm 进度条回调
+        tqdm_callback = TqdmProgressCallback(total_timesteps=int(args.total_timesteps), update_freq=args.n_steps)
+        
+        # 组合所有回调
+        from stable_baselines3.common.callbacks import CallbackList
+        callback_list = CallbackList([event_callback, tqdm_callback])
+        
         # try:
         model.learn(total_timesteps = args.total_timesteps, 
                     tb_log_name = model_name, 
                     reset_num_timesteps = args.restart, 
-                    callback=event_callback)
+                    callback=callback_list)
 
         if args.total_timesteps % save_freq != 0: 
             save_model(model, save_dir, model_name + f'_{args.total_timesteps}_steps')
