@@ -6,6 +6,7 @@ import torch as th
 from gymnasium import spaces
 import torch.nn.functional as F
 from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Union
+import time
 
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.common.policies import BasePolicy
@@ -54,6 +55,11 @@ class CustomMaskablePPO(MaskablePPO):
             *args,
             **kwargs
         )
+        # Profiling variables
+        self.total_rollout_time = 0.0
+        self.total_train_time = 0.0
+        self.rollout_count = 0
+        self.train_count = 0
     
     def _update_learning_rate(self, optimizers: Union[List[th.optim.Optimizer], th.optim.Optimizer]) -> None:
         """
@@ -75,6 +81,9 @@ class CustomMaskablePPO(MaskablePPO):
         """
         Update policy using the currently gathered rollout buffer.
         """
+        # Profiling: record start time
+        train_start_time = time.time()
+        
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
         # Update optimizer learning rate
@@ -259,6 +268,17 @@ class CustomMaskablePPO(MaskablePPO):
         # if len(NContrast_losses) > 0:
         #     self.logger.record("train/NContrast_loss", np.mean(NContrast_losses))
         
+        # Profiling: record end time and update statistics
+        train_end_time = time.time()
+        train_elapsed = train_end_time - train_start_time
+        self.total_train_time += train_elapsed
+        self.train_count += 1
+        
+        # Log profiling information
+        self.logger.record("profiling/train_time", train_elapsed)
+        self.logger.record("profiling/avg_train_time", self.total_train_time / self.train_count)
+        self.logger.record("profiling/total_train_time", self.total_train_time)
+        
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
         
@@ -430,6 +450,8 @@ class CustomMaskablePPO(MaskablePPO):
         :return: True if function returned with at least `n_rollout_steps`
             collected, False if callback terminated rollout prematurely.
         """
+        # Profiling: record start time
+        rollout_start_time = time.time()
 
         assert isinstance(
             rollout_buffer, (MaskableRolloutBuffer, MaskableDictRolloutBuffer)
@@ -508,5 +530,23 @@ class CustomMaskablePPO(MaskablePPO):
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 
         callback.on_rollout_end()
+
+        # Profiling: record end time and update statistics
+        rollout_end_time = time.time()
+        rollout_elapsed = rollout_end_time - rollout_start_time
+        self.total_rollout_time += rollout_elapsed
+        self.rollout_count += 1
+        
+        # Log profiling information
+        self.logger.record("profiling/rollout_time", rollout_elapsed)
+        self.logger.record("profiling/avg_rollout_time", self.total_rollout_time / self.rollout_count)
+        self.logger.record("profiling/total_rollout_time", self.total_rollout_time)
+        
+        # Log ratio statistics
+        if self.total_train_time > 0:
+            total_time = self.total_rollout_time + self.total_train_time
+            self.logger.record("profiling/rollout_ratio", self.total_rollout_time / total_time)
+            self.logger.record("profiling/train_ratio", self.total_train_time / total_time)
+            self.logger.record("profiling/total_time", total_time)
 
         return True

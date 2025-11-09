@@ -400,6 +400,22 @@ if __name__ == '__main__':
                     reset_num_timesteps = args.restart, 
                     callback=callback_list)
 
+        # Print profiling statistics
+        print("\n" + "="*80)
+        print("Training Profiling Statistics:")
+        print("="*80)
+        print(f"Total Rollout Time:  {model.total_rollout_time:.2f} seconds ({model.total_rollout_time/3600:.2f} hours)")
+        print(f"Total Train Time:    {model.total_train_time:.2f} seconds ({model.total_train_time/3600:.2f} hours)")
+        total_time = model.total_rollout_time + model.total_train_time
+        print(f"Total Time:          {total_time:.2f} seconds ({total_time/3600:.2f} hours)")
+        print(f"\nRollout Count:       {model.rollout_count}")
+        print(f"Train Count:         {model.train_count}")
+        print(f"Avg Rollout Time:    {model.total_rollout_time/model.rollout_count:.2f} seconds")
+        print(f"Avg Train Time:      {model.total_train_time/model.train_count:.2f} seconds")
+        print(f"\nRollout Ratio:       {model.total_rollout_time/total_time*100:.2f}%")
+        print(f"Train Ratio:         {model.total_train_time/total_time*100:.2f}%")
+        print("="*80 + "\n")
+
         if args.total_timesteps % save_freq != 0: 
             save_model(model, save_dir, model_name + f'_{args.total_timesteps}_steps')
             
@@ -435,7 +451,7 @@ if __name__ == '__main__':
         model = model.load(mname, 
                            device=args.device, 
                            custom_objects={'n_steps': args.n_steps,
-                                           'node_num': env.g.node_num,
+                                           'node_num': graph.node_num,
                                            'observation_space': env.observation_space,
                                            'action_space': env.action_space,
                                            'policy_kwargs': policy_kwargs if args.model != 'NONE' else simple_policy_kwargs})
