@@ -1,0 +1,61 @@
+---
+alwaysApply: true
+---
+
+# 项目结构指南
+
+这是一个基于图神经网络的强化学习项目，用于解决 Red-Blue Pebble Game 问题。
+
+## 核心文件结构
+
+### 主入口
+- [main.py](mdc:main.py) - 训练和评估的主入口点
+- [run.sh](mdc:run.sh) - 训练脚本快速启动
+
+### 环境模块 (env/)
+- [env/RedBluePebbleGame.py](mdc:env/RedBluePebbleGame.py) - 主要的Gymnasium环境实现
+- [env/graph.py](mdc:env/graph.py) - DAG图结构和算子定义
+- [env/graph_util.py](mdc:env/graph_util.py) - 图相关工具函数
+- [env/env_const.py](mdc:env/env_const.py) - 环境常量定义
+- [env/env_util.py](mdc:env/env_util.py) - 环境工具函数
+
+### 模型模块 (model/)
+- [model/custom_policy.py](mdc:model/custom_policy.py) - 自定义的Maskable Actor-Critic策略
+- [model/graph_extractor.py](mdc:model/graph_extractor.py) - GNN特征提取器（SAGEConv, GATConv）
+- [model/policy_value.py](mdc:model/policy_value.py) - 策略和价值网络
+- [model/transformer.py](mdc:model/transformer.py) - Transformer架构支持
+
+### 算法实现
+- [custom_maskable_ppo.py](mdc:custom_maskable_ppo.py) - 自定义的Maskable PPO实现
+
+### 工具模块 (util/)
+- [util/parse.py](mdc:util/parse.py) - 命令行参数解析
+- [util/strategy_vis.py](mdc:util/strategy_vis.py) - 策略可视化工具
+
+### CUDA加速 (spmm_ext_src/)
+- [spmm_ext_src/spmm_ext.cu](mdc:spmm_ext_src/spmm_ext.cu) - CUDA稀疏矩阵乘法扩展
+- [spmm_ext_src/setup.py](mdc:spmm_ext_src/setup.py) - CUDA扩展编译配置
+
+## 目录说明
+
+- `saved_model/` - 保存的模型检查点
+- `out/` - 输出文件
+  - `out/strategy/` - 策略输出文本
+  - `out/media/` - 可视化媒体文件
+  - `out/img/` - 图像输出
+
+## 关键依赖
+
+- PyTorch + PyTorch Geometric
+- Stable-Baselines3 + sb3-contrib
+- Gymnasium (OpenAI Gym)
+- CUDA (可选，用于加速)
+- tqdm (训练进度显示)
+
+## 开发流程
+
+1. 修改环境 → 编辑 `env/` 目录下的文件
+2. 修改模型 → 编辑 `model/` 目录下的文件
+3. 调整训练参数 → 修改 [util/parse.py](mdc:util/parse.py) 或命令行参数
+4. 运行训练 → 执行 [main.py](mdc:main.py)
+5. 可视化结果 → 使用 [util/strategy_vis.py](mdc:util/strategy_vis.py)

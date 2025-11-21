@@ -1,0 +1,147 @@
+---
+globs: *.py
+---
+
+# Python 编码规范
+
+## 通用规范
+
+### 1. 类型注解
+- 始终使用类型注解，特别是对函数参数和返回值
+- 使用 `from typing import List, Dict, Union, Optional, Tuple` 等标准类型
+- PyTorch张量使用 `th.Tensor` 或 `torch.Tensor`
+
+```python
+def forward(self, obs: th.Tensor, action_masks: Optional[np.ndarray] = None) -> th.Tensor:
+    # 实现代码
+    pass
+```
+
+### 2. 文档字符串
+- 使用三引号文档字符串描述类和重要函数
+- 说明参数类型、返回值和功能
+
+```python
+def _update_valid_action_space(self, node_id: int, act: int):
+    """
+    更新节点的有效动作空间
+    
+    :param node_id: 节点ID
+    :param act: 执行的动作
+    """
+    pass
+```
+
+### 3. 命名约定
+- 类名使用 `CamelCase`（如 `CustomMaskableActorCriticPolicy`）
+- 函数和变量使用 `snake_case`（如 `get_valid_action_mask`）
+- 私有方法使用前导下划线（如 `_get_obs`）
+- 常量使用 `UPPER_SNAKE_CASE`（如 `NODE_CACHED`, `LOAD`）
+
+### 4. 导入顺序
+按照以下顺序组织导入：
+1. 标准库
+2. 第三方库（numpy, torch, gymnasium等）
+3. 本地模块
+
+```python
+import os
+import json
+from typing import Optional, Dict
+
+import numpy as np
+import torch as th
+from gymnasium import spaces
+
+from env.env_const import IN_NODE_FEATURES
+from model.custom_policy import CustomGNN
+```
+
+## PyTorch 特定规范
+
+### 1. 设备管理
+- 始终考虑设备兼容性（CPU/CUDA）
+- 在forward方法中检查设备一致性
+
+```python
+if self.device != observations.device:
+    self.device = observations.device
+    self.edge_index = self.edge_index.to(observations.device)
+```
+
+### 2. 张量操作
+- 使用 `th.Tensor` 而不是 `torch.Tensor` 作为类型注解
+- 避免in-place操作除非明确需要
+- 使用 `.detach()` 或 `with th.no_grad():` 避免不必要的梯度计算
+
+### 3. 模型定义
+- 在 `__init__` 中定义所有层
+- 使用 `reset_parameters()` 初始化权重
+- forward方法应该简洁明了
+
+```python
+class CustomGNN(BaseFeaturesExtractor):
+    def __init__(self, ...):
+        super().__init__(observation_space, features_dim)
+        self.gnn = GNNExtractor(...)
+        
+    def forward(self, observations: th.Tensor) -> th.Tensor:
+        # 实现forward逻辑
+        pass
+```
+
+## Gymnasium 环境规范
+
+### 1. 环境接口
+- 实现标准的 `reset()` 和 `step()` 方法
+- 返回 `(observation, reward, terminated, truncated, info)` 元组
+- 定义 `observation_space` 和 `action_space`
+
+### 2. 动作掩码
+- 使用 `action_masks()` 方法返回有效动作
+- 掩码形状应与动作空间匹配
+
+```python
+def action_masks(self):
+    """返回当前状态的有效动作掩码"""
+    return self._get_valid_action_mask()
+```
+
+## 性能优化注意事项
+
+### 1. 避免重复计算
+- 缓存可重用的计算结果
+- 使用 `@property` 装饰器处理计算属性
+
+### 2. 稀疏张量
+- 对于图数据，优先使用 `torch_sparse.SparseTensor`
+- 使用自定义CUDA kernel加速（见 [spmm_ext_src/spmm_ext.cu](mdc:spmm_ext_src/spmm_ext.cu)）
+
+### 3. 批处理
+- 始终考虑批处理维度（batch_size, node_num, features）
+- 使用 `reshape` 和 `transpose` 进行维度变换
+
+```python
+# 正确处理批处理
+obs_state = observations.reshape(batch_size, self.node_num, self.node_features)
+```
+
+## 调试和日志
+
+### 1. 使用 colorama 输出彩色日志
+```python
+from colorama import Fore, Style
+print(Fore.RED + 'Error message' + Style.RESET_ALL)
+print(Fore.YELLOW + 'Warning message' + Style.RESET_ALL)
+```
+
+### 2. 使用 assert 进行检查
+```python
+assert node_id < self.node_num, f"Invalid node_id: {node_id}"
+```
+
+### 3. 条件性输出
+```python
+if self.verbose:
+    print(f'Step: {self.steps} action: {act}')
+```

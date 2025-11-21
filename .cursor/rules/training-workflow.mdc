@@ -1,0 +1,377 @@
+---
+description: PPO训练流程和参数调优指南
+---
+
+# 训练流程指南
+
+## 快速开始
+
+### 1. 基础训练命令
+
+```bash
+python main.py \
+  --model GNN \
+  --op_config 1 7 7 2 3 2 12 \
+  --total_timesteps 5e7 \
+  --agent_name my_experiment \
+  --device cuda:0
+```
+
+### 2. 继续训练（从检查点恢复）
+
+```bash
+python main.py \
+  --pretr "02-12_17-25-12_my_experiment_5000000_steps" \
+  --total_timesteps 1e8 \
+  --agent_name my_experiment
+```
+
+### 3. 评估模式
+
+```bash
+python main.py \
+  --eval_mode \
+  --agent_name "02-12_17-25-12_my_experiment_50000000_steps" \
+  --filename test_output.txt \
+  --verbose
+```
+
+## PPO 超参数详解
+
+### 核心参数
+
+#### learning_rate (lr)
+学习率，支持线性调度：
+
+```bash
+# 固定学习率
+--lr 3e-4
+
+# 线性衰减（初始3e-4，最终1e-4）
+--lr 3e-4 1e-4
+```
+
+**调优建议**：
+- 初始值：`3e-4`（标准）
+- 大模型/复杂任务：`1e-4`
+- 小模型/简单任务：`5e-4`
+- 使用学习率衰减通常能提升最终性能
+
+#### n_steps
+每次更新前收集的步数：
+
+```bash
+--n_steps 2048  # 标准
+--n_steps 512   # 更频繁更新，适合简单任务
+--n_steps 4096  # 更大批次，适合复杂任务
+```
+
+**注意**：
+- 必须是 `batch_size` 的整数倍
+- 较大的 `n_steps` 需要更多内存
+- 如果设为0，自动使用 `max_episode_len`
+
+#### batch_size
+小批次大小：
+
+```bash
+--batch_size 64    # 标准
+--batch_size 128   # 更快训练
+--batch_size 32    # GPU内存有限
+```
+
+**关系**：`n_steps` / `batch_size` = 每次更新的梯度步数
+
+#### n_epochs
+每次更新的训练轮数：
+
+```bash
+--n_epochs 10  # 标准
+--n_epochs 5   # 更快但可能欠拟合
+--n_epochs 20  # 更充分但可能过拟合
+```
+
+### 奖励相关参数
+
+#### gamma（折扣因子）
+```bash
+--gamma 0.99   # 标准，重视长期奖励
+--gamma 0.95   # 更重视短期奖励
+--gamma 0.999  # 极度重视长期奖励
+```
+
+#### gae_lambda（GAE λ）
+```bash
+--gae_lambda 0.95  # 标准
+--gae_lambda 0.9   # 偏向低方差
+--gae_lambda 0.98  # 偏向低偏差
+```
+
+### 裁剪参数
+
+#### clip_range
+PPO裁剪范围：
+
+```bash
+--clip_range 0.2   # 标准
+--clip_range 0.1   # 更保守的更新
+--clip_range 0.3   # 更激进的更新
+```
+
+#### clip_range_vf
+价值函数裁剪范围（可选）：
+
+```bash
+# 固定裁剪
+--clip_range_vf 0.2
+
+# 线性衰减
+--clip_range_vf 0.2 0.1
+```
+
+### 损失系数
+
+#### ent_coef（熵系数）
+鼓励探索：
+
+```bash
+--ent_coef 0.01  # 标准
+--ent_coef 0.0   # 无熵正则化
+--ent_coef 0.05  # 更多探索
+```
+
+#### vf_coef（价值函数系数）
+```bash
+--vf_coef 0.5  # 标准
+--vf_coef 1.0  # 更重视价值估计
+```
+
+### 梯度裁剪
+
+```bash
+--max_grad_norm 0.5  # 标准
+--max_grad_norm 1.0  # 允许更大梯度
+--max_grad_norm 0.1  # 更保守
+```
+
+## 奖励塑形
+
+在 [main.py](mdc:main.py) 中定义奖励配置：
+
+```python
+# 标准奖励配置
+--reward_load -1      # 加载惩罚
+--reward_store -1     # 存储惩罚  
+--reward_compute 1    # 计算奖励
+--reward_done 1       # 完成奖励
+--reward_scale 1.0    # 奖励缩放
+
+# 调整奖励比例
+--reward_scale 10.0   # 放大所有奖励
+```
+
+### 奖励调优策略
+
+1. **平衡操作成本**：
+   ```bash
+   --reward_load -1 --reward_store -1 --reward_compute 2
+   ```
+
+2. **重视完成速度**：
+   ```bash
+   --reward_timecost -0.01 --reward_done 10
+   ```
+
+3. **避免特定行为**：
+   ```bash
+   --reward_recompute -5  # 惩罚重复计算
+   ```
+
+## 训练监控
+
+### TensorBoard
+```bash
+# 启动训练时指定日志目录
+python main.py --tb_log_dir ./logs/experiment1
+
+# 在另一终端启动TensorBoard
+tensorboard --logdir ./logs
+```
+
+**监控指标**：
+- `train/policy_gradient_loss` - 策略梯度损失
+- `train/value_loss` - 价值函数损失
+- `train/entropy_loss` - 熵损失
+- `rollout/ep_rew_mean` - 平均episode奖励
+- `rollout/ep_len_mean` - 平均episode长度
+
+### 训练进度条
+
+项目已集成tqdm进度条（见 [README_TQDM.md](mdc:README_TQDM.md)）：
+
+```
+Training Progress: |████████░░░░| 5000000/50000000 [02:15<20:30, 2222steps/s]
+```
+
+## 模型保存
+
+### 自动保存
+```bash
+--save_freq 0.1  # 每10%进度保存一次
+--save_freq 0.2  # 每20%进度保存一次
+```
+
+保存位置：
+```
+saved_model/
+└── {timestamp}_{agent_name}/
+    ├── {timestamp}_{agent_name}_hParam.json
+    ├── {timestamp}_{agent_name}_5000000_steps.zip
+    └── {timestamp}_{agent_name}_10000000_steps.zip
+```
+
+### 手动保存
+
+模型在训练结束后自动保存，也可以通过检查点callback实现自定义保存。
+
+## 环境配置
+
+### 操作配置（op_config）
+
+```bash
+--op_config [Batch, Height, Width, InChannels, KernelSize, OutChannels, CacheSize]
+
+# 示例
+--op_config 1 7 7 2 3 2 12
+```
+
+**参数说明**：
+- `Batch`: 批大小
+- `Height/Width`: 输入特征图尺寸
+- `InChannels`: 输入通道数
+- `KernelSize`: 卷积核大小
+- `OutChannels`: 输出通道数  
+- `CacheSize`: 缓存大小（影响问题难度）
+
+### Episode长度限制
+
+```bash
+--max_episode_len 512   # 标准
+--max_episode_len 1024  # 复杂问题
+--max_episode_len 256   # 简单问题
+```
+
+### 环境约束
+
+```bash
+--load_lock_disable      # 禁用加载锁
+--autodel_lock_disable   # 禁用自动删除锁
+--action_truncate        # 无有效动作时截断
+```
+
+## 训练技巧
+
+### 1. 课程学习
+
+从简单到复杂逐步训练：
+
+```bash
+# 阶段1：小图（缓存=8）
+python main.py --op_config 1 5 5 2 3 2 8 --total_timesteps 2e7
+
+# 阶段2：中图（缓存=12）
+python main.py --op_config 1 7 7 2 3 2 12 --total_timesteps 3e7 --pretr ...
+
+# 阶段3：大图（缓存=16）
+python main.py --op_config 1 9 9 2 3 2 16 --total_timesteps 5e7 --pretr ...
+```
+
+### 2. 超参数搜索
+
+使用不同超参数训练多个agent：
+
+```bash
+for lr in 1e-4 3e-4 5e-4; do
+  python main.py --lr $lr --agent_name "exp_lr_${lr}"
+done
+```
+
+### 3. 集成多GPU训练
+
+```bash
+# GPU 0
+python main.py --device cuda:0 --agent_name exp1 &
+
+# GPU 1  
+python main.py --device cuda:1 --agent_name exp2 &
+```
+
+### 4. 早停策略
+
+监控TensorBoard中的奖励曲线，如果：
+- 奖励不再增长（>5M步）→ 停止训练
+- 损失震荡严重 → 降低学习率
+- 熵过低（<0.01）→ 增加熵系数
+
+## 常见问题排查
+
+### 训练不收敛
+- ✓ 降低学习率（`--lr 1e-4`）
+- ✓ 增加熵系数（`--ent_coef 0.05`）
+- ✓ 增加批次大小（`--batch_size 128`）
+- ✓ 检查奖励塑形是否合理
+
+### GPU内存不足
+- ✓ 减少批次大小（`--batch_size 32`）
+- ✓ 减少并行环境（`--ncpu 2`）
+- ✓ 减少特征维度（`--features_dim 32`）
+
+### 训练速度慢
+- ✓ 启用稀疏张量（`--sp_tensor`）
+- ✓ 增加并行环境（`--ncpu 8`）
+- ✓ 使用更简单的模型（`--model MLP`）
+- ✓ 编译CUDA扩展（见 [spmm_ext_src/](mdc:spmm_ext_src/)）
+
+### 过拟合训练环境
+- ✓ 增加环境多样性（改变 `op_config`）
+- ✓ 增加熵系数鼓励探索
+- ✓ 使用dropout（`--dropout 0.1`）
+- ✓ L2正则化（`--weight_decay 1e-4`）
+
+## 评估和可视化
+
+### 评估训练好的模型
+
+```bash
+python main.py \
+  --eval_mode \
+  --agent_name "timestamp_experiment_50000000_steps" \
+  --filename output.txt \
+  --verbose
+```
+
+### 生成策略视频
+
+```bash
+python main.py \
+  --eval_mode \
+  --agent_name "timestamp_experiment_50000000_steps" \
+  --filename video_demo.txt \
+  --video
+```
+
+输出视频保存在 `out/media/videos/`
+
+## 最佳实践总结
+
+1. **从标准配置开始**：使用推荐的超参数
+2. **使用TensorBoard**：实时监控训练进度
+3. **定期保存检查点**：避免长时间训练后丢失进度
+4. **尝试不同奖励塑形**：这对性能影响最大
+5. **记录实验参数**：使用描述性的 `agent_name`
+6. **多次运行实验**：使用不同随机种子验证稳定性
+
+```bash
+# 好的实验命名示例
+--agent_name "sage_64dim_lr3e4_ent001_v1"
+```

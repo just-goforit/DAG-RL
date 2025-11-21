@@ -1,0 +1,261 @@
+---
+description: 图神经网络模型架构和训练相关规范
+---
+
+# 模型架构指南
+
+## GNN特征提取器架构
+
+### 基础结构
+GNN模型用于从图结构数据中提取节点特征，主要组件在 [model/graph_extractor.py](mdc:model/graph_extractor.py) 中定义。
+
+### 支持的GNN类型
+
+#### 1. SAGEConv（GraphSAGE）
+- **默认选择**，适合大规模图
+- 使用邻居聚合和自身特征结合
+- 支持CUDA加速（通过 [spmm_ext_src/spmm_ext.cu](mdc:spmm_ext_src/spmm_ext.cu)）
+
+```python
+# 使用SAGEConv
+args = {
+    'model': 'GNN',
+    'gnn_class': 'SAGE',
+    'sp_tensor': True,  # 启用稀疏张量加速
+}
+```
+
+#### 2. GATConv（Graph Attention）
+- 使用注意力机制
+- 适合需要关注特定邻居的场景
+
+```python
+args = {
+    'model': 'GNN', 
+    'gnn_class': 'GAT',
+}
+```
+
+### 关键参数
+
+#### features_dim
+- GNN输出的特征维度（每个节点）
+- 推荐值：32, 64, 128
+- 影响模型容量和性能
+
+#### node_wise
+- 是否按节点处理特征
+- GNN模型**必须**设置为 `True`
+- MLP模型可选
+
+#### activation_fn
+- 激活函数选择：`relu`, `tanh`, `gelu`
+- 默认：`relu`
+
+## 策略网络架构
+
+策略网络定义在 [model/custom_policy.py](mdc:model/custom_policy.py) 中。
+
+### CustomMaskableActorCriticPolicy
+
+这是核心策略类，继承自 `MaskableActorCriticPolicy`：
+
+```python
+class CustomMaskableActorCriticPolicy(MaskableActorCriticPolicy):
+    def __init__(
+        self,
+        observation_space,
+        action_space,
+        lr_schedule,
+        node_num: int,          # 图节点数量
+        edge_index: np.ndarray, # 边索引
+        pi_conv_out: int,       # 策略网络卷积输出维度
+        vf_conv_out: int,       # 价值网络卷积输出维度
+        gp_vf: bool,            # 是否对价值函数使用全局池化
+        transformer: bool,      # 是否使用Transformer架构
+        node_wise: bool,        # 节点级别处理
+        ...
+    ):
+```
+
+### 策略-价值网络分离
+
+#### Policy Network (Actor)
+- 输入：GNN提取的特征
+- 输出：动作概率分布
+- 支持动作掩码（Maskable）
+
+#### Value Network (Critic)  
+- 输入：GNN提取的特征
+- 输出：状态价值估计
+- 可选择使用全局池化（`gp_vf=True`）
+
+### 网络架构配置
+
+#### pi_net_arch & vf_net_arch
+定义策略和价值网络的MLP层：
+
+```python
+# 简单架构
+--pi_net_arch 64 64
+--vf_net_arch 64 64
+
+# 深层架构  
+--pi_net_arch 128 128 64
+--vf_net_arch 128 128 64
+```
+
+#### pi_conv_out & vf_conv_out
+在MLP前添加卷积层：
+
+```python
+# 添加卷积层处理节点特征
+--pi_conv_out 32
+--vf_conv_out 32
+```
+
+## Transformer 支持
+
+启用Transformer架构（在 [model/transformer.py](mdc:model/transformer.py) 中定义）：
+
+```python
+--transfm  # 启用Transformer
+--canolab  # 启用规范标签（用于Transformer）
+```
+
+**注意**：
+- 使用Transformer时自动禁用 `pi_conv_out`
+- 需要提供 `edge_index` 用于位置编码
+
+## MLP 特征提取器
+
+当不使用GNN时，可以使用纯MLP：
+
+```python
+--model MLP
+--node_wise  # 可选，是否对每个节点独立处理
+--mlp_hid_net_arch 64 32  # MLP隐藏层配置
+```
+
+### MLP vs GNN
+
+| 特性 | GNN | MLP |
+|-----|-----|-----|
+| 图结构利用 | ✅ | ❌ |
+| 计算复杂度 | 较高 | 较低 |
+| 适用场景 | 图结构重要 | 图结构不重要 |
+| 训练速度 | 较慢 | 较快 |
+
+## 正交初始化
+
+```python
+--ortho_init  # 启用正交初始化
+```
+
+使用正交初始化可以改善训练稳定性，特别是对于深层网络。
+
+## 稀疏张量优化
+
+```python
+--sp_tensor  # 启用稀疏张量
+```
+
+**优势**：
+- 减少内存占用
+- 加速大规模图的计算
+- 自动使用CUDA kernel（如果可用）
+
+**要求**：
+- 需要编译CUDA扩展（见 [spmm_ext_src/](mdc:spmm_ext_src/)）
+- 仅支持SAGE类型的GNN
+
+## 常用配置示例
+
+### 1. 标准GNN配置（推荐）
+```bash
+python main.py \
+  --model GNN \
+  --gnn_class SAGE \
+  --features_dim 64 \
+  --node_wise \
+  --pi_net_arch 64 64 \
+  --vf_net_arch 64 64 \
+  --ortho_init \
+  --sp_tensor
+```
+
+### 2. 轻量级配置（快速测试）
+```bash
+python main.py \
+  --model GNN \
+  --gnn_class SAGE \
+  --features_dim 32 \
+  --node_wise \
+  --pi_net_arch 32 \
+  --vf_net_arch 32
+```
+
+### 3. Transformer配置（实验性）
+```bash
+python main.py \
+  --model GNN \
+  --gnn_class SAGE \
+  --features_dim 64 \
+  --node_wise \
+  --transfm \
+  --canolab \
+  --vf_net_arch 64 64
+```
+
+### 4. 纯MLP配置
+```bash
+python main.py \
+  --model MLP \
+  --features_dim 64 \
+  --mlp_hid_net_arch 128 64 \
+  --pi_net_arch 64 \
+  --vf_net_arch 64
+```
+
+## 调试模型架构
+
+使用 `--debug` 标志查看模型架构和参数数量：
+
+```bash
+python main.py --debug --model GNN --gnn_class SAGE ...
+```
+
+输出示例：
+```
+features_extractor: 12.50K
+mlp_extractor_net: 8.32K
+action_net: 0.51K
+value_net: 0.13K
+Total: 21.46K
+```
+
+## 性能优化建议
+
+### 1. 特征维度选择
+- 小图（<100节点）：32-64
+- 中图（100-500节点）：64-128
+- 大图（>500节点）：128-256
+
+### 2. 网络深度
+- 简单任务：1-2层MLP
+- 复杂任务：2-3层MLP
+- 避免过深（>4层）导致过拟合
+
+### 3. 批处理大小
+```python
+--batch_size 64   # 标准
+--batch_size 128  # GPU内存充足时
+--batch_size 32   # GPU内存有限时
+```
+
+### 4. 并行环境数
+```python
+--ncpu 4   # 标准，4个并行环境
+--ncpu 8   # 更快的数据收集
+--ncpu 16  # 高性能服务器
+```

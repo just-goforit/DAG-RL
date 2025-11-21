@@ -1,0 +1,427 @@
+---
+description: Red-Blue Pebble Game 环境开发指南
+globs: env/*.py
+---
+
+# 环境开发指南
+
+## Red-Blue Pebble Game 概述
+
+这是一个基于DAG图的资源管理问题，目标是在有限缓存下高效完成计算任务。
+
+核心文件：[env/RedBluePebbleGame.py](mdc:env/RedBluePebbleGame.py)
+
+## 环境接口
+
+### 初始化
+
+```python
+from env.RedBluePebbleGame import RedBluePebbleGameEnv
+
+config = {
+    "verbose": False,
+    "summary": True,
+    "obs_mode": "box",        # 'box' 或 'vec'
+    "obs_field": "loc",       # 'loc' 或 'glb'
+    "max_episode_len": 512,
+    "reward_config": {...},
+    "op_info": operator_info(...),
+    "load_lock_enable": True,
+    "del_lock_enable": True,
+    "action_truncate": False,
+}
+
+env = RedBluePebbleGameEnv(config)
+```
+
+### 标准方法
+
+#### reset()
+```python
+observation, info = env.reset()
+```
+
+#### step()
+```python
+next_obs, reward, terminated, truncated, info = env.step(action)
+```
+
+#### action_masks()
+```python
+valid_actions = env.action_masks()  # 返回布尔数组
+```
+
+## 观测空间
+
+### 观测模式（obs_mode）
+
+#### 1. 'box' 模式（推荐用于GNN）
+特征对齐，零填充到相同维度：
+```python
+obs.shape = (ADD_FEATURE + node_num * max_feature_dim,)
+```
+
+#### 2. 'vec' 模式（用于MLP）
+特征展平，不对齐：
+```python
+obs.shape = (ADD_FEATURE + 
+             input_num * IN_NODE_FEATURES +
+             output_num * OUT_NODE_FEATURES + 
+             mid_num * MID_NODE_FEATURES,)
+```
+
+### 观测字段（obs_field）
+
+#### 'loc'（局部）
+只包含节点状态特征
+
+#### 'glb'（全局）
+包含节点状态 + 全局信息（如缓存占用率）
+
+## 动作空间
+
+### 动作类型
+
+环境支持4种基本动作（定义在 [env/env_const.py](mdc:env/env_const.py)）：
+
+```python
+LOAD = 0     # 将节点从内存加载到缓存
+STORE = 1    # 将节点从缓存存储到内存
+DELETE = 2   # 从缓存中删除节点
+COMPUTE = 3  # 计算节点
+```
+
+### 动作空间结构
+
+```python
+# 简化动作空间：只选择节点（动作自动推断）
+action_space = spaces.Discrete(node_num)
+```
+
+### 动作掩码
+
+使用 `action_masks()` 获取当前有效动作：
+
+```python
+mask = env.action_masks()  # shape: (node_num,)
+# mask[i] = True 表示节点i有有效动作
+```
+
+## 节点特征
+
+### 输入节点特征（IN_NODE_FEATURES）
+定义在 [env/env_const.py](mdc:env/env_const.py)：
+- `NODE_MEMED`: 是否在内存中
+- `NODE_CACHED`: 是否在缓存中
+- （其他特征...）
+
+### 中间节点特征（MID_NODE_FEATURES）
+- `NODE_COMPUTED`: 是否已计算
+- `NODE_CONTRIBUTED`: 是否已贡献到输出
+- （其他特征...）
+
+### 输出节点特征（OUT_NODE_FEATURES）
+- `NODE_COMPUTED`: 计算进度（0-1）
+- （其他特征...）
+
+## 奖励设计
+
+### 奖励配置
+
+在环境初始化时指定：
+
+```python
+reward_config = {
+    "TIME_COST": 0.0,      # 每步时间惩罚
+    "DELETE": 0.0,         # 删除奖励/惩罚
+    "LOAD": -1.0,          # 加载惩罚
+    "STORE": -1.0,         # 存储惩罚
+    "COMPUTE": 1.0,        # 计算奖励
+    "RECOMPUTE": 0.0,      # 重复计算惩罚
+    "REDUNDANT": 0.0,      # 冗余动作惩罚
+    "DONE": 5.0,           # 完成任务奖励
+}
+```
+
+### 奖励塑形策略
+
+#### 1. 最小化操作数
+```python
+reward_config = {
+    "LOAD": -1,
+    "STORE": -1,
+    "COMPUTE": 0,
+    "DONE": 10,
+}
+```
+
+#### 2. 鼓励快速完成
+```python
+reward_config = {
+    "TIME_COST": -0.01,
+    "LOAD": -1,
+    "STORE": -1, 
+    "COMPUTE": 1,
+    "DONE": 20,
+}
+```
+
+#### 3. 惩罚重复计算
+```python
+reward_config = {
+    "LOAD": -1,
+    "STORE": -1,
+    "COMPUTE": 1,
+    "RECOMPUTE": -5,
+    "DONE": 5,
+}
+```
+
+## 环境约束机制
+
+### 1. 加载锁（Load Lock）
+
+**目的**：防止无效加载
+
+```python
+config["load_lock_enable"] = True  # 启用
+```
+
+**规则**：
+- 节点被加载后，必须至少被计算一次才能删除/存储
+- 防止 "加载-立即删除" 的无效操作
+
+### 2. 自动删除锁（Auto Delete Lock）
+
+**目的**：避免删除刚计算的节点
+
+```python
+config["del_lock_enable"] = True  # 启用
+```
+
+**规则**：
+- 自动删除的节点被标记
+- 防止立即重新操作
+
+### 3. 动作截断（Action Truncate）
+
+```python
+config["action_truncate"] = True  # 启用
+```
+
+**规则**：
+- 当无有效动作时立即终止episode
+- 适用于调试约束是否过严
+
+## 图结构（DAG）
+
+### 定义算子
+
+在 [env/graph.py](mdc:env/graph.py) 中定义：
+
+```python
+from env.graph import operator_info, naive_Conv2d_DAG
+
+op_info = operator_info(
+    batch_size=1,
+    in_height=7,
+    in_width=7,
+    inplanes=2,
+    kernel_size=3,
+    outplanes=2,
+    S=12,  # 缓存大小
+)
+
+graph = naive_Conv2d_DAG(op_info)
+```
+
+### 图属性
+
+```python
+graph.node_num      # 总节点数
+graph.input_num     # 输入节点数
+graph.output_num    # 输出节点数
+graph.mid_num       # 中间节点数
+graph.edge_index    # 边索引 [2, num_edges]
+```
+
+## 开发新环境
+
+### 1. 继承基类
+
+```python
+from env.RedBluePebbleGame import RedBluePebbleGameEnv
+
+class MyCustomEnv(RedBluePebbleGameEnv):
+    def __init__(self, config):
+        super().__init__(config)
+        # 自定义初始化
+```
+
+### 2. 重写关键方法
+
+#### 自定义观测
+```python
+def _get_obs(self):
+    # 自定义观测生成
+    obs = ...
+    return obs
+```
+
+#### 自定义奖励
+```python
+def step(self, action):
+    # 执行基类step
+    obs, reward, terminated, truncated, info = super().step(action)
+    
+    # 添加自定义奖励
+    custom_reward = self._compute_custom_reward()
+    reward += custom_reward
+    
+    return obs, reward, terminated, truncated, info
+```
+
+#### 自定义有效动作
+```python
+def _get_valid_action_mask(self):
+    # 获取基类掩码
+    mask = super()._get_valid_action_mask()
+    
+    # 添加自定义约束
+    mask = self._apply_custom_constraints(mask)
+    
+    return mask
+```
+
+### 3. 注册新环境
+
+```python
+from gymnasium.envs.registration import register
+
+register(
+    id='MyCustomEnv-v0',
+    entry_point='env.my_custom_env:MyCustomEnv',
+)
+```
+
+## 调试工具
+
+### 1. 详细输出模式
+
+```python
+config["verbose"] = True  # 打印每步动作
+config["summary"] = True  # 打印episode摘要
+```
+
+### 2. 输出到文件
+
+```python
+config["filename"] = "debug_output.txt"
+```
+
+输出格式：
+```
+LOAD 0 +
+COMPUTE 5 +
+STORE 0 +
+...
+```
+（`+` 表示智能体动作，`*` 表示自动动作）
+
+### 3. 人工游戏模式
+
+```bash
+python main.py --human --op_config 1 5 5 2 3 2 8
+```
+
+手动测试环境行为
+
+### 4. 渲染
+
+```python
+env.render()  # 打印当前状态和有效动作
+```
+
+## 性能优化
+
+### 1. 向量化环境
+
+```python
+from stable_baselines3.common.vec_env import SubprocVecEnv
+
+env = make_vec_env(
+    RedBluePebbleGameEnv,
+    env_kwargs=dict(config=config),
+    n_envs=4,  # 4个并行环境
+    vec_env_cls=SubprocVecEnv,
+)
+```
+
+### 2. 缓存优化
+
+```python
+# 缓存有效动作掩码
+self.cached_action_mask = None
+
+def _get_valid_action_mask(self):
+    if self.cached_action_mask is not None:
+        return self.cached_action_mask
+    # 计算掩码
+    ...
+    self.cached_action_mask = mask
+    return mask
+```
+
+### 3. 使用NumPy优化
+
+```python
+# 批量操作
+predecessors = self.get_predecessors(node_id)
+in_cache = self.state.x[predecessors, NODE_CACHED] > 0
+
+# 而不是循环
+# for pred in predecessors:
+#     if self.state.x[pred, NODE_CACHED] > 0:
+#         ...
+```
+
+## 测试环境
+
+### 单元测试
+
+```python
+def test_basic_operations():
+    config = {...}
+    env = RedBluePebbleGameEnv(config)
+    
+    obs, info = env.reset()
+    
+    # 测试加载
+    action = 0  # LOAD node 0
+    obs, reward, done, truncated, info = env.step(action)
+    
+    assert reward == config["reward_config"]["LOAD"]
+    assert env.state.x[0, NODE_CACHED] > 0
+```
+
+### 验证约束
+
+```python
+def test_action_constraints():
+    env = RedBluePebbleGameEnv(config)
+    env.reset()
+    
+    # 测试加载锁
+    env.step(0)  # LOAD
+    mask = env.action_masks()
+    assert mask[DELETE] == False  # 不能立即删除
+```
+
+## 最佳实践
+
+1. **设计合理的奖励**：确保奖励与优化目标一致
+2. **使用约束机制**：减少无效动作空间
+3. **缓存计算结果**：避免重复计算有效动作
+4. **详细日志**：使用 `verbose` 和 `filename` 调试
+5. **单元测试**：为关键功能编写测试
+6. **性能分析**：使用 [profile_training.py](mdc:profile_training.py) 找出瓶颈

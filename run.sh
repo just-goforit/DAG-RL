@@ -34,3 +34,10 @@ python main.py --max_episode_len 512 --op_config 1 6 6 1 3 1 32 --reward_scale 0
                --model MLP --ortho_init --features_dim 256 --pi_net_arch 256 --vf_net_arch 128 \
                --tb_log_dir exp/log --save_path exp/saved_model --agent_name 16131s32_mlp_lr_bs \
                --device cuda:5 --save_freq 0.2
+
+python main.py --max_episode_len 512 --op_config 1 5 5 1 3 1 32 \
+               --lr 1e-4 --total_timesteps 1e6 \
+               --n_steps 1024 --ncpu 8 --batch_size 2048 --n_epochs 15 \
+               --model MLP --ortho_init \
+               --features_dim 128 --pi_net_arch 128 --vf_net_arch 64 \
+               --device cuda:0 --agent_name opt_v2

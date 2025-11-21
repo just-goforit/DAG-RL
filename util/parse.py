@@ -156,7 +156,7 @@ def get_args():
     parser.add_argument('--total_timesteps', type=float, default=1e7, help='total training timesteps')
     parser.add_argument('--restart', action='store_true', help='restart tensorboard') 
     parser.add_argument('--agent_name', type=str, default='test', help='agent name/tb_log_name/saved model file_name')
-    parser.add_argument('--save_path', type=str, default='./saved_model', help='path to save model')
+    parser.add_argument('--save_path', type=str, default='exp/saved_model', help='path to save model')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 
                                                                       'cuda:0', 'cuda:1', 'cuda:2', 'cuda:3', 'cuda:4', 'cuda:5', 'cuda:6', 'cuda:7'], 
                                                              help='device to use for training')
