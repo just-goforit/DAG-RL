@@ -154,6 +154,9 @@ class RedBluePebbleGameEnv(gym.Env):
         if terminated or truncated:
             info['terminal_observation'] = self._get_obs() if obs is None else obs
         info['TimeLimit.truncated'] = truncated and not terminated
+        # Add action_mask for RLlib compatibility
+        if self.cached_action_mask is not None:
+            info['action_mask'] = self.action_masks()
         return info
 
     def _get_obs(self):
