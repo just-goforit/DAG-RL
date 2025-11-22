@@ -1,12 +1,15 @@
 import numpy as np
 import gymnasium as gym
-from typing import Union
+from typing import Union, Optional
 from env.env_const import *
 from gymnasium import spaces
 from env.graph import DAG_Graph, operator_info, naive_Conv2d_DAG
 
 class RedBluePebbleGameEnv(gym.Env):
-    def __init__(self, config:dict):
+    def __init__(self, config: Optional[dict] = None):
+        # 处理 config 为 None 的情况，提供默认空字典以符合 RLlib 接口规范
+        if config is None:
+            config = {}
         ## env name
         self.verbose:str = config.get("verbose", "")
         ## cache stat summary print flag
@@ -38,7 +41,11 @@ class RedBluePebbleGameEnv(gym.Env):
         self.reward_config = config.get("reward_config", ACTION_REWARD)
         ## Operator's DAG info
         op_info:operator_info = config.get("op_info", None)
-        assert op_info is not None
+        if op_info is None:
+            raise ValueError(
+                "op_info is required in config. Please provide operator_info "
+                "via config['op_info']. Example: config={'op_info': operator_info(...)}"
+            )
         self.operator_batch_size = op_info.batch_size
         self.operator_height = op_info.in_height
         self.operator_width = op_info.in_width
