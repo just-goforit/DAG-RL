@@ -520,6 +520,8 @@ class RedBluePebbleGameEnv(gym.Env):
         self.wraped_cached_action_mask = None
         
         observation = self._get_obs()
+        # 计算 action_mask 以便在 info 中包含它（RLlib 兼容性）
+        self._get_valid_action_mask()
         info = self._get_info()
         
         if self.load_lock_enable:
