@@ -274,45 +274,45 @@ class customGATConv(nn.Module):
 
         return out    
 
-class GNNExtractor(nn.Module):
-    def __init__(self, 
-                 in_features, 
-                 out_features, 
-                 gnn_class: str='SAGE',
-                 activation_fn: nn.Module=nn.ReLU,
-                 dropout:float=0.0,
-                 sp_tensor:bool = False):
-        super(GNNExtractor, self).__init__()
+# class GNNExtractor(nn.Module):
+#     def __init__(self, 
+#                  in_features, 
+#                  out_features, 
+#                  gnn_class: str='SAGE',
+#                  activation_fn: nn.Module=nn.ReLU,
+#                  dropout:float=0.0,
+#                  sp_tensor:bool = False):
+#         super(GNNExtractor, self).__init__()
         
-        avaliable_gnn = ['SAGE', 'GAT']
-        if gnn_class not in avaliable_gnn:
-            raise ValueError(f'{gnn_class} is supported GNN class, available: {avaliable_gnn}')
+#         avaliable_gnn = ['SAGE', 'GAT']
+#         if gnn_class not in avaliable_gnn:
+#             raise ValueError(f'{gnn_class} is supported GNN class, available: {avaliable_gnn}')
         
-        self.dropout = dropout
-        self.out_features = out_features
-        self.sp_tensor = sp_tensor
+#         self.dropout = dropout
+#         self.out_features = out_features
+#         self.sp_tensor = sp_tensor
         
-        # self.conv1 = SAGEConv(in_features, out_features)  # batched PyG
-        if gnn_class == 'SAGE':
-            self.conv1 = optSAGEConv(in_features, out_features) # batched spmm
-        else:
-            self.conv1 = customGATConv(in_features, out_features)
+#         # self.conv1 = SAGEConv(in_features, out_features)  # batched PyG
+#         if gnn_class == 'SAGE':
+#             self.conv1 = optSAGEConv(in_features, out_features) # batched spmm
+#         else:
+#             self.conv1 = customGATConv(in_features, out_features)
             
-        act_fn = activation_fn()
-        if isinstance(act_fn, torch.nn.modules.activation.ReLU):
-            self.act_fn = F.relu
-        elif isinstance(act_fn, torch.nn.modules.activation.Tanh):
-            self.act_fn = F.tanh
-        elif isinstance(act_fn, torch.nn.modules.activation.GELU):
-            self.act_fn = F.gelu
-        else:
-            raise ValueError('Wrong activation function type')
+#         act_fn = activation_fn()
+#         if isinstance(act_fn, torch.nn.modules.activation.ReLU):
+#             self.act_fn = F.relu
+#         elif isinstance(act_fn, torch.nn.modules.activation.Tanh):
+#             self.act_fn = F.tanh
+#         elif isinstance(act_fn, torch.nn.modules.activation.GELU):
+#             self.act_fn = F.gelu
+#         else:
+#             raise ValueError('Wrong activation function type')
         
-    def forward(self, x:torch.Tensor, edge_index:Union[torch.Tensor, Tuple, SparseTensor]):
-        x = self.conv1(x, edge_index)
-        x = self.act_fn(x)
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        return x
+#     def forward(self, x:torch.Tensor, edge_index:Union[torch.Tensor, Tuple, SparseTensor]):
+#         x = self.conv1(x, edge_index)
+#         x = self.act_fn(x)
+#         x = F.dropout(x, p=self.dropout, training=self.training)
+#         return x
         
 class MlpLayer(nn.Module):
     """

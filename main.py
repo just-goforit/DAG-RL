@@ -12,7 +12,8 @@ from env.env_const import (
     ADD_FEATURE,
     ACTION_REWARD,
 )
-from model.custom_policy import CustomGNN, CustomMlp
+# from model.custom_policy import CustomGNN, CustomMlp
+from model.custom_policy import CustomMlp
 from env.graph import operator_info, naive_Conv2d_DAG
 from env.RedBluePebbleGame import RedBluePebbleGameEnv
 from model.custom_policy import CustomMaskableActorCriticPolicy
@@ -41,7 +42,8 @@ reward_config = {
     "DONE": 5,  # reward for finish task
 }
 
-models = {"GNN": CustomGNN, "MLP": CustomMlp}
+# models = {"GNN": CustomGNN, "MLP": CustomMlp}
+models = {"MLP": CustomMlp}
 
 activation_fns = {
     "relu": torch.nn.ReLU,
@@ -313,10 +315,10 @@ if __name__ == "__main__":
     }
 
     policys = {
-        "GNN": {
-            "features_extractor_class": CustomGNN,
-            "features_extractor_kwargs": gnn_features_extractor_config,
-        },
+        # "GNN": {
+        #     "features_extractor_class": CustomGNN,
+        #     "features_extractor_kwargs": gnn_features_extractor_config,
+        # },
         "MLP": {
             "features_extractor_class": CustomMlp,
             "features_extractor_kwargs": mlp_features_extractor_config,
