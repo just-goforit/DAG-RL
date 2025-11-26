@@ -57,7 +57,6 @@ try:
     from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
     from ray.rllib.core.columns import Columns
     from ray.rllib.utils.annotations import override
-    from ray.rllib.utils.nested_dict import NestedDict
 except ImportError:
     raise ImportError(
         "RLlib is not installed. Please install it with: pip install 'ray[rllib]'"
@@ -315,7 +314,7 @@ class CustomMaskableTorchRLModule(TorchRLModule):
         return logits
     
     @override(TorchRLModule)
-    def _forward_inference(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
         Forward pass for inference (evaluation).
         
@@ -352,7 +351,7 @@ class CustomMaskableTorchRLModule(TorchRLModule):
         }
     
     @override(TorchRLModule)
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
         Forward pass for exploration (sampling actions).
         
@@ -394,7 +393,7 @@ class CustomMaskableTorchRLModule(TorchRLModule):
         }
     
     @override(TorchRLModule)
-    def _forward_train(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
         Forward pass for training.
         
