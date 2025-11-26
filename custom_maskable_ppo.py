@@ -19,15 +19,18 @@ from stable_baselines3.common.type_aliases import GymEnv
 from stable_baselines3.common.utils import (
     get_system_info,
     update_learning_rate,
-    explained_variance, 
-    update_learning_rate, 
-    obs_as_tensor
+    explained_variance,
+    update_learning_rate,
+    obs_as_tensor,
 )
 
 from sb3_contrib import MaskablePPO
 from sb3_contrib.ppo_mask.policies import CnnPolicy, MlpPolicy, MultiInputPolicy
 from sb3_contrib.common.maskable.utils import get_action_masks, is_masking_supported
-from sb3_contrib.common.maskable.buffers import MaskableDictRolloutBuffer, MaskableRolloutBuffer
+from sb3_contrib.common.maskable.buffers import (
+    MaskableDictRolloutBuffer,
+    MaskableRolloutBuffer,
+)
 
 from model.custom_policy import CustomMlp, CustomGNN
 import matplotlib.pyplot as plt
@@ -35,13 +38,15 @@ import matplotlib.pyplot as plt
 SelfBaseAlgorithm = TypeVar("SelfBaseAlgorithm", bound="BaseAlgorithm")
 SelfMaskablePPO = TypeVar("SelfMaskablePPO", bound="MaskablePPO")
 
+
 class CustomMaskablePPO(MaskablePPO):
-    
+
     policy_aliases: ClassVar[Dict[str, Type[BasePolicy]]] = {
         "MlpPolicy": MlpPolicy,
         "CnnPolicy": CnnPolicy,
         "MultiInputPolicy": MultiInputPolicy,
     }
+
     def __init__(
         self,
         # focus:bool = True,
@@ -51,17 +56,16 @@ class CustomMaskablePPO(MaskablePPO):
     ):
         # self.focus = focus
         # self.focus_coef = focus_coef
-        super().__init__(
-            *args,
-            **kwargs
-        )
+        super().__init__(*args, **kwargs)
         # Profiling variables
         self.total_rollout_time = 0.0
         self.total_train_time = 0.0
         self.rollout_count = 0
         self.train_count = 0
-    
-    def _update_learning_rate(self, optimizers: Union[List[th.optim.Optimizer], th.optim.Optimizer]) -> None:
+
+    def _update_learning_rate(
+        self, optimizers: Union[List[th.optim.Optimizer], th.optim.Optimizer]
+    ) -> None:
         """
         Update the optimizers learning rate using the current learning rate schedule
         and the current progress remaining (from 1 to 0).
@@ -70,12 +74,16 @@ class CustomMaskablePPO(MaskablePPO):
             An optimizer or a list of optimizers.
         """
         # Log the current learning rate
-        self.logger.record("train/learning_rate", self.lr_schedule(self._current_progress_remaining))
+        self.logger.record(
+            "train/learning_rate", self.lr_schedule(self._current_progress_remaining)
+        )
 
         if not isinstance(optimizers, list):
             optimizers = [optimizers]
         for optimizer in optimizers:
-            update_learning_rate(optimizer, self.lr_schedule(self._current_progress_remaining))
+            update_learning_rate(
+                optimizer, self.lr_schedule(self._current_progress_remaining)
+            )
 
     def train(self) -> None:
         """
@@ -83,7 +91,7 @@ class CustomMaskablePPO(MaskablePPO):
         """
         # Profiling: record start time
         train_start_time = time.time()
-        
+
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
         # Update optimizer learning rate
@@ -100,7 +108,7 @@ class CustomMaskablePPO(MaskablePPO):
 
         # focus_losses = []
         # NContrast_losses = []
-        
+
         continue_training = True
 
         # train for n_epochs epochs
@@ -139,14 +147,18 @@ class CustomMaskablePPO(MaskablePPO):
                 # Normalize advantage
                 advantages = rollout_data.advantages
                 if self.normalize_advantage:
-                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+                    advantages = (advantages - advantages.mean()) / (
+                        advantages.std() + 1e-8
+                    )
 
                 # ratio between old and new policy, should be one at the first iteration
                 ratio = th.exp(log_prob - rollout_data.old_log_prob)
 
                 # clipped surrogate loss
                 policy_loss_1 = advantages * ratio
-                policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
+                policy_loss_2 = advantages * th.clamp(
+                    ratio, 1 - clip_range, 1 + clip_range
+                )
                 policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
 
                 # Logging
@@ -174,43 +186,51 @@ class CustomMaskablePPO(MaskablePPO):
                 else:
                     entropy_loss = -th.mean(entropy)
                 entropy_losses.append(entropy_loss.item())
-                
+
                 # Focus component loss mse sigmoid(score)<=>(mask->sum_node_wise)
                 # if focus_loss is None:
                 #     focus_loss = th.zeros_like(entropy_loss, device=entropy_loss.device)
                 # else:
                 #     focus_losses.append(focus_loss.item())
-                
+
                 # Ncontrast component
                 # if Ncontrast_loss is None:
                 #     Ncontrast_loss = th.zeros_like(entropy_loss, device=entropy_loss.device)
                 # else:
                 #     NContrast_losses.append(Ncontrast_loss.item())
-                
-                loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss # + focus_loss * self.focus_coef
-                
+
+                loss = (
+                    policy_loss
+                    + self.ent_coef * entropy_loss
+                    + self.vf_coef * value_loss
+                )  # + focus_loss * self.focus_coef
+
                 # Calculate approximate form of reverse KL Divergence for early stopping
                 # see issue #417: https://github.com/DLR-RM/stable-baselines3/issues/417
                 # and discussion in PR #419: https://github.com/DLR-RM/stable-baselines3/pull/419
                 # and Schulman blog: http://joschu.net/blog/kl-approx.html
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
-                    approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    approx_kl_div = (
+                        th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    )
                     approx_kl_divs.append(approx_kl_div)
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
                     continue_training = False
                     if self.verbose >= 1:
-                        print(f"Early stopping at step {epoch} due to reaching max kl: {approx_kl_div:.2f}")
+                        print(
+                            f"Early stopping at step {epoch} due to reaching max kl: {approx_kl_div:.2f}"
+                        )
                     break
 
                 # Optimization step
                 self.policy.optimizer.zero_grad()
                 loss.backward()
-                
-                def save_grad(name:str, param):
-                    def draw_gradient(params, file_path:str=None):
-                        def tolist(tensor:th.Tensor, name):
+
+                def save_grad(name: str, param):
+                    def draw_gradient(params, file_path: str = None):
+                        def tolist(tensor: th.Tensor, name):
                             flattened_list = []
                             v = tensor.view(-1)
                             if not th.all(th.isnan(v) == False):
@@ -218,38 +238,45 @@ class CustomMaskablePPO(MaskablePPO):
                             for elem in v:
                                 flattened_list.append(elem.item())
                             return flattened_list
+
                         # grads = [param.grad.item() for param in params] # to scalar
                         grads = []
-                        name = file_path.split('/')[-1].split('.')[0]
-                        for p in params: 
+                        name = file_path.split("/")[-1].split(".")[0]
+                        for p in params:
                             if p.grad is not None:
-                                grads.extend(tolist(p.grad, name)) # to scalar
+                                grads.extend(tolist(p.grad, name))  # to scalar
                         min_ = min(grads) if len(grads) > 0 else 0.0
                         max_ = max(grads) if len(grads) > 0 else 0.0
                         # print("{} gradient range [{},{}] len:{}".format(name, min_, max_, len(grads)))
                         plt.plot(range(len(grads)), grads)
-                        plt.xlabel('Parameter Index')
-                        plt.ylabel('Gradient Value')
-                        plt.title('Gradient Range[{:.3e}-{:.3e}]'.format(min_, max_))
+                        plt.xlabel("Parameter Index")
+                        plt.ylabel("Gradient Value")
+                        plt.title("Gradient Range[{:.3e}-{:.3e}]".format(min_, max_))
                         plt.savefig(file_path)
                         plt.close()
-                    base_path = f'out/img/'
-                    draw_gradient(param, base_path+name+'.png')
+
+                    base_path = f"out/img/"
+                    draw_gradient(param, base_path + name + ".png")
+
                 # save_grad('features_extractor', self.policy.features_extractor.parameters())
                 # save_grad('mlp_extractor', self.policy.mlp_extractor.parameters())
                 # save_grad('action_net', self.policy.action_net.parameters())
                 # save_grad('value_net', self.policy.value_net.parameters())
                 # print('draw over!')
-                
+
                 # Clip grad norm
-                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                th.nn.utils.clip_grad_norm_(
+                    self.policy.parameters(), self.max_grad_norm
+                )
                 self.policy.optimizer.step()
 
             if not continue_training:
                 break
 
         self._n_updates += self.n_epochs
-        explained_var = explained_variance(self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten())
+        explained_var = explained_variance(
+            self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten()
+        )
 
         # Logs
         self.logger.record("train/entropy_loss", np.mean(entropy_losses))
@@ -261,27 +288,29 @@ class CustomMaskablePPO(MaskablePPO):
         self.logger.record("train/explained_variance", explained_var)
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/clip_range", clip_range)
-        
+
         # if len(focus_losses) > 0:
         #     self.logger.record("train/focus_loss", np.mean(focus_losses))
-        
+
         # if len(NContrast_losses) > 0:
         #     self.logger.record("train/NContrast_loss", np.mean(NContrast_losses))
-        
+
         # Profiling: record end time and update statistics
         train_end_time = time.time()
         train_elapsed = train_end_time - train_start_time
         self.total_train_time += train_elapsed
         self.train_count += 1
-        
+
         # Log profiling information
         self.logger.record("profiling/train_time", train_elapsed)
-        self.logger.record("profiling/avg_train_time", self.total_train_time / self.train_count)
+        self.logger.record(
+            "profiling/avg_train_time", self.total_train_time / self.train_count
+        )
         self.logger.record("profiling/total_train_time", self.total_train_time)
-        
+
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
-        
+
     @classmethod
     def load(  # noqa: C901
         cls: Type[SelfBaseAlgorithm],
@@ -336,24 +365,34 @@ class CustomMaskablePPO(MaskablePPO):
             if "device" in data["policy_kwargs"]:
                 del data["policy_kwargs"]["device"]
             # backward compatibility, convert to new format
-            if "net_arch" in data["policy_kwargs"] and len(data["policy_kwargs"]["net_arch"]) > 0:
+            if (
+                "net_arch" in data["policy_kwargs"]
+                and len(data["policy_kwargs"]["net_arch"]) > 0
+            ):
                 saved_net_arch = data["policy_kwargs"]["net_arch"]
-                if isinstance(saved_net_arch, list) and isinstance(saved_net_arch[0], dict):
+                if isinstance(saved_net_arch, list) and isinstance(
+                    saved_net_arch[0], dict
+                ):
                     data["policy_kwargs"]["net_arch"] = saved_net_arch[0]
 
-        if "policy_kwargs" in kwargs and kwargs["policy_kwargs"] != data["policy_kwargs"]:
+        if (
+            "policy_kwargs" in kwargs
+            and kwargs["policy_kwargs"] != data["policy_kwargs"]
+        ):
             raise ValueError(
                 f"The specified policy kwargs do not equal the stored policy kwargs."
                 f"Stored kwargs: {data['policy_kwargs']}, specified kwargs: {kwargs['policy_kwargs']}"
             )
 
         if "observation_space" not in data or "action_space" not in data:
-            raise KeyError("The observation_space and action_space were not given, can't verify new environments")
+            raise KeyError(
+                "The observation_space and action_space were not given, can't verify new environments"
+            )
 
         # Gym -> Gymnasium space conversion
         for key in {"observation_space", "action_space"}:
             data[key] = _convert_space(data[key])
-        
+
         if env is not None:
             # Wrap first if needed
             env = cls._wrap_env(env, data["verbose"])
@@ -384,9 +423,9 @@ class CustomMaskablePPO(MaskablePPO):
 
         if isinstance(model.policy.features_extractor, CustomGNN):
             if model.policy.features_extractor.sp_tensor:
-                model.policy.features_extractor.update_sp_edge_index() # update sp_tensor and csr
+                model.policy.features_extractor.update_sp_edge_index()  # update sp_tensor and csr
             else:
-                model.policy.features_extractor.update_edge_index2adj() # update adj matrix
+                model.policy.features_extractor.update_edge_index2adj()  # update adj matrix
         try:
             # put state_dicts back in place
             model.set_parameters(params, exact_match=True, device=device)
@@ -394,7 +433,9 @@ class CustomMaskablePPO(MaskablePPO):
             # Patch to load Policy saved using SB3 < 1.7.0
             # the error is probably due to old policy being loaded
             # See https://github.com/DLR-RM/stable-baselines3/issues/1233
-            if "pi_features_extractor" in str(e) and "Missing key(s) in state_dict" in str(e):
+            if "pi_features_extractor" in str(
+                e
+            ) and "Missing key(s) in state_dict" in str(e):
                 model.set_parameters(params, exact_match=False, device=device)
                 warnings.warn(
                     "You are probably loading a model saved with SB3 < 1.7.0, "
@@ -425,7 +466,7 @@ class CustomMaskablePPO(MaskablePPO):
         if model.use_sde:
             model.policy.reset_noise()  # type: ignore[operator]
         return model
-    
+
     def collect_rollouts(
         self,
         env: VecEnv,
@@ -464,20 +505,25 @@ class CustomMaskablePPO(MaskablePPO):
         rollout_buffer.reset()
 
         if use_masking and not is_masking_supported(env):
-            raise ValueError("Environment does not support action masking. Consider using ActionMasker wrapper")
+            raise ValueError(
+                "Environment does not support action masking. Consider using ActionMasker wrapper"
+            )
 
         callback.on_rollout_start()
 
         while n_steps < n_rollout_steps:
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
+                # rllib
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
 
                 # This is the only change related to invalid action masking
                 if use_masking:
                     action_masks = get_action_masks(env)
 
-                actions, values, log_probs = self.policy(obs_tensor, action_masks=action_masks)
+                actions, values, log_probs = self.policy(
+                    obs_tensor, action_masks=action_masks
+                )
 
             actions = actions.cpu().numpy()
             new_obs, rewards, dones, infos = env.step(actions)
@@ -504,7 +550,9 @@ class CustomMaskablePPO(MaskablePPO):
                     and infos[idx].get("terminal_observation") is not None
                     and infos[idx].get("TimeLimit.truncated", False)
                 ):
-                    terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
+                    terminal_obs = self.policy.obs_to_tensor(
+                        infos[idx]["terminal_observation"]
+                    )[0]
                     with th.no_grad():
                         terminal_value = self.policy.predict_values(terminal_obs)[0]
                     rewards[idx] += self.gamma * terminal_value
@@ -536,17 +584,23 @@ class CustomMaskablePPO(MaskablePPO):
         rollout_elapsed = rollout_end_time - rollout_start_time
         self.total_rollout_time += rollout_elapsed
         self.rollout_count += 1
-        
+
         # Log profiling information
         self.logger.record("profiling/rollout_time", rollout_elapsed)
-        self.logger.record("profiling/avg_rollout_time", self.total_rollout_time / self.rollout_count)
+        self.logger.record(
+            "profiling/avg_rollout_time", self.total_rollout_time / self.rollout_count
+        )
         self.logger.record("profiling/total_rollout_time", self.total_rollout_time)
-        
+
         # Log ratio statistics
         if self.total_train_time > 0:
             total_time = self.total_rollout_time + self.total_train_time
-            self.logger.record("profiling/rollout_ratio", self.total_rollout_time / total_time)
-            self.logger.record("profiling/train_ratio", self.total_train_time / total_time)
+            self.logger.record(
+                "profiling/rollout_ratio", self.total_rollout_time / total_time
+            )
+            self.logger.record(
+                "profiling/train_ratio", self.total_train_time / total_time
+            )
             self.logger.record("profiling/total_time", total_time)
 
         return True
