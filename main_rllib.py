@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional
 from tqdm import tqdm
 from colorama import Fore, Style
 
+import gymnasium as gym
+
 # RLlib imports
 try:
     from ray.rllib.algorithms.ppo import PPOConfig
@@ -162,7 +164,7 @@ def create_ppo_config(args, env_config: Dict[str, Any], model_config: Dict[str, 
     ppo_config = (
         PPOConfig()
         .environment(
-            env="RedBluePebbleGameEnv",
+            RedBluePebbleGameEnv,
             env_config=env_config,
         )
         .rl_module(
@@ -174,7 +176,7 @@ def create_ppo_config(args, env_config: Dict[str, Any], model_config: Dict[str, 
         .training(
             lr=args.lr[0],  # Use initial learning rate, can be scheduled later
             train_batch_size=args.batch_size * args.n_epochs if args.n_steps > 0 else args.max_episode_len * args.n_epochs,
-            sgd_minibatch_size=args.batch_size,
+            # sgd_minibatch_size=args.batch_size,
             num_sgd_iter=args.n_epochs,
             gamma=args.gamma,
             lambda_=args.gae_lambda,
@@ -184,14 +186,12 @@ def create_ppo_config(args, env_config: Dict[str, Any], model_config: Dict[str, 
             vf_loss_coeff=args.vf_coef,
             grad_clip=args.max_grad_norm,
         )
-        .rollouts(
-            num_rollout_workers=args.ncpu,
-            num_envs_per_worker=1,
-            rollout_fragment_length=args.n_steps if args.n_steps > 0 else args.max_episode_len,
-        )
-        .resources(
-            num_gpus=1 if args.device.startswith('cuda') else 0,
-        )
+        # .rollouts(
+        #     num_rollout_workers=args.ncpu,
+        #     num_envs_per_worker=1,
+        #     rollout_fragment_length=args.n_steps if args.n_steps > 0 else args.max_episode_len,
+        # )
+        .env_runners(num_env_runners=1)
         .framework("torch")
         .debugging(seed=args.seed)
     )

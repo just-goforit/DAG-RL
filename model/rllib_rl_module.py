@@ -63,7 +63,8 @@ except ImportError:
     )
 
 # Local imports
-from model.custom_policy import CustomGNN, CustomMlp
+# from model.custom_policy import CustomGNN, CustomMlp
+from model.custom_policy import CustomMlp
 from model.policy_value import CustomPolicyValueNet
 
 
@@ -76,29 +77,29 @@ class CustomMaskableTorchRLModule(TorchRLModule):
     RLlib-compatible interfaces with action mask support.
     """
     
-    def __init__(
-        self,
-        *args,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        # These will be initialized in setup()
-        self._features_extractor = None
-        self._mlp_extractor = None
-        self._action_net = None
-        self._value_net = None
+#     def __init__(
+#         self,
+#         *args,
+#         **kwargs,
+#     ):
+#         super().__init__(*args, **kwargs)
+#         # These will be initialized in setup()
+#         self._features_extractor = None
+#         self._mlp_extractor = None
+#         self._action_net = None
+#         self._value_net = None
         
-        # Configuration parameters (will be set from model_config)
-        self._node_num = None
-        self._edge_index = None
-        self._addi_features = None
-        self._pi_conv_out = None
-        self._vf_conv_out = None
-        self._gp_vf = None
-        self._transformer = None
-        self._node_wise = None
-        self._ortho_init = True
-        self._share_features_extractor = True
+#         # Configuration parameters (will be set from model_config)
+#         self._node_num = None
+#         self._edge_index = None
+#         self._addi_features = None
+#         self._pi_conv_out = None
+#         self._vf_conv_out = None
+#         self._gp_vf = None
+#         self._transformer = None
+#         self._node_wise = None
+#         self._ortho_init = True
+#         self._share_features_extractor = True
         
     @override(TorchRLModule)
     def setup(self):
@@ -212,6 +213,10 @@ class CustomMaskableTorchRLModule(TorchRLModule):
         # Apply orthogonal initialization if enabled
         if self._ortho_init:
             self._apply_ortho_init()
+            
+        # 强制报错以查看参数
+        params_list = list(self.parameters())
+        raise RuntimeError(f"DEBUG: Parameter count: {len(params_list)}. Content: {params_list}")
         
         # Store edge_index for reference (CustomGNN manages its own copy)
         # Note: CustomGNN expects numpy array in __init__, but manages tensor internally
@@ -250,20 +255,20 @@ class CustomMaskableTorchRLModule(TorchRLModule):
     def _extract_features(self, obs: th.Tensor) -> th.Tensor:
         """Extract features from observations using the feature extractor."""
         # Handle device synchronization for edge_index if using GNN
-        if isinstance(self._features_extractor, CustomGNN):
-            # CustomGNN handles device synchronization internally in its forward method
-            # We just need to ensure the feature extractor's device matches obs device
-            if hasattr(self._features_extractor, 'device') and obs.device != self._features_extractor.device:
-                self._features_extractor.device = obs.device
-                # Update edge_index in feature extractor
-                if hasattr(self._features_extractor, 'edge_index'):
-                    # Convert to tensor if needed
-                    if isinstance(self._features_extractor.edge_index, np.ndarray):
-                        self._features_extractor.edge_index = th.from_numpy(
-                            self._features_extractor.edge_index
-                        ).to(obs.device)
-                    else:
-                        self._features_extractor.edge_index = self._features_extractor.edge_index.to(obs.device)
+        # if isinstance(self._features_extractor, CustomGNN):
+        #     # CustomGNN handles device synchronization internally in its forward method
+        #     # We just need to ensure the feature extractor's device matches obs device
+        #     if hasattr(self._features_extractor, 'device') and obs.device != self._features_extractor.device:
+        #         self._features_extractor.device = obs.device
+        #         # Update edge_index in feature extractor
+        #         if hasattr(self._features_extractor, 'edge_index'):
+        #             # Convert to tensor if needed
+        #             if isinstance(self._features_extractor.edge_index, np.ndarray):
+        #                 self._features_extractor.edge_index = th.from_numpy(
+        #                     self._features_extractor.edge_index
+        #                 ).to(obs.device)
+        #             else:
+        #                 self._features_extractor.edge_index = self._features_extractor.edge_index.to(obs.device)
         
         return self._features_extractor(obs)
     

@@ -7,11 +7,14 @@ from model.transformer import TransformerPtrNet
 from stable_baselines3.common.utils import get_device
 from typing import Type, List, Dict, Union, Tuple, Optional
 
+
 def ceil2pow(x):
     return pow(2, math.ceil(math.log(x) / math.log(2) + 1))
 
+
 def floor2pow(x):
     return pow(2, math.ceil(math.log(x) / math.log(2)))
+
 
 class MlpExtractor(nn.Module):
     """
@@ -93,31 +96,33 @@ class MlpExtractor(nn.Module):
     def forward_critic(self, features: torch.Tensor) -> torch.Tensor:
         return self.value_net(features)
 
+
 class CustomPolicyValueNet(MlpExtractor):
     """
     this is the policy & value net head
 
     attention
     ---------
-    the output features equals to the probability of every action, 
+    the output features equals to the probability of every action,
     so:
         nodes * actions <==> nodes + actions which output style is better
     """
+
     def __init__(
         self,
-        feature_dim: int, # get from super->feature_extractor->gnn->feature_dim
-        addi_features:int,
-        node_wise: bool, # whether feature_dim is per node
+        feature_dim: int,  # get from super->feature_extractor->gnn->feature_dim
+        addi_features: int,
+        node_wise: bool,  # whether feature_dim is per node
         net_arch: Union[List[int], Dict[str, List[int]]],
         activation_fn: Type[nn.Module],
         node_num: int,
         edge_index: np.ndarray,
         pi_conv_out: int = 8,
         vf_conv_out: int = 2,
-        transformer:bool = False,
+        transformer: bool = False,
         # topk_layer:int = 1,
         # focus_num: int = 0, # focus on K nodes through pooling
-        gp_vf: bool = False, # add mean global pooling to vf
+        gp_vf: bool = False,  # add mean global pooling to vf
         # focus_vf: bool = False, # focus on K nodes through pooling
         # layerNorm: bool = False,
         # norm_mode: str = 'graph',
@@ -126,34 +131,46 @@ class CustomPolicyValueNet(MlpExtractor):
         self.gp_vf = gp_vf
         self.transformer = transformer
         # pi_dense = (focus_num if focus_num != 0 else node_num) * (pi_conv_out if pi_conv_out != 0 else feature_dim) # action_net(Linear) input
-        # vf_dense = ((focus_num+(1 if gp_vf else 0)) if focus_num != 0 and focus_vf else (1 if gp_vf else node_num)) * (vf_conv_out if vf_conv_out != 0 else feature_dim) 
-        pi_dense = 0 if transformer else node_num * (pi_conv_out if pi_conv_out != 0 else feature_dim)
-        vf_dense = (1 if gp_vf else node_num) * (vf_conv_out if vf_conv_out != 0 else feature_dim)
+        # vf_dense = ((focus_num+(1 if gp_vf else 0)) if focus_num != 0 and focus_vf else (1 if gp_vf else node_num)) * (vf_conv_out if vf_conv_out != 0 else feature_dim)
+        pi_dense = (
+            0
+            if transformer
+            else node_num * (pi_conv_out if pi_conv_out != 0 else feature_dim)
+        )
+        vf_dense = (1 if gp_vf else node_num) * (
+            vf_conv_out if vf_conv_out != 0 else feature_dim
+        )
         # action_net(Linear) input
         self.addi_features = addi_features
         if not node_wise:
             # assert focus_num == 0 and 'if not node_wise feature(mlp feature_extractor), focus_num must be 0'
             # assert focus_vf == False and 'if not node_wise feature(mlp feature_extractor), focus_vf must be False'
-            assert pi_conv_out == 0 and 'if not node_wise feature(mlp feature_extractor), pi_conv_out must be 0'
-            assert vf_conv_out == 0 and 'if not node_wise feature(mlp feature_extractor), vf_conv_out must be 0'
-            # assert layerNorm == False and 'if not node_wise feature(mlp feature_extractor), layerNorm must be False' 
+            assert (
+                pi_conv_out == 0
+                and "if not node_wise feature(mlp feature_extractor), pi_conv_out must be 0"
+            )
+            assert (
+                vf_conv_out == 0
+                and "if not node_wise feature(mlp feature_extractor), vf_conv_out must be 0"
+            )
+            # assert layerNorm == False and 'if not node_wise feature(mlp feature_extractor), layerNorm must be False'
             assert transformer == False
             pi_dense = vf_dense = feature_dim
         super().__init__(
-            pi_dense+addi_features,
-            vf_dense+addi_features,
+            pi_dense + addi_features,
+            vf_dense + addi_features,
             net_arch,
             activation_fn,
-            device
-        )# Pass remaining arguments to base class
-        '''
+            device,
+        )  # Pass remaining arguments to base class
+        """
                                                                                                      _dense
                                                                                                         |
                                                                                                         v
                                               +--->conv_pi -> (nm_pi->) relu -> (fc_pi->relu->) -> action_net: [node_num, action_space]
         node_num, feature_dim -> focus_conv ->|
                                               +--->conv_vf -> relu -> (fc_vf->relu->) -> value_net: [1,]
-        '''
+        """
         # act_fn = activation_fn()
         # if isinstance(act_fn, torch.nn.modules.activation.ReLU):
         #     self.act_fn = F.relu
@@ -163,8 +180,8 @@ class CustomPolicyValueNet(MlpExtractor):
         #     self.act_fn = F.gelu
         # else:
         #     raise ValueError('Wrong activation function type')
-        
-        self.node_num = node_num 
+
+        self.node_num = node_num
         # self.focus_num = focus_num
         # self.focus_vf = focus_vf
         # self.spotlight:List[nn.Module] = [] if focus_num != 0 else None
@@ -178,9 +195,9 @@ class CustomPolicyValueNet(MlpExtractor):
         #     self.spotlight = nn.Sequential(*self.spotlight)
 
         # conv_layer = 1
-        conv_pi:List[nn.Module] = []
-        conv_vf:List[nn.Module] = []
-        # for _ in range(conv_layer-1): 
+        conv_pi: List[nn.Module] = []
+        conv_vf: List[nn.Module] = []
+        # for _ in range(conv_layer-1):
         #     conv_pi.append(nn.Conv2d(feature_dim, feature_dim, kernel_size=1))
         #     conv_pi.append(activation_fn())
         #     conv_vf.append(nn.Conv2d(feature_dim, feature_dim, kernel_size=1))
@@ -191,41 +208,49 @@ class CustomPolicyValueNet(MlpExtractor):
         if vf_conv_out > 0:
             conv_vf.append(nn.Conv2d(feature_dim, vf_conv_out, kernel_size=1))
             conv_vf.append(activation_fn())
-        
+
         self.conv_pi = nn.Sequential(*conv_pi) if pi_conv_out != 0 else None
         self.conv_vf = nn.Sequential(*conv_vf) if vf_conv_out != 0 else None
         # if norm_mode == 'graph':
         #     self.nm_pi = LayerNorm(pi_dense, mode='node') if pi_conv_out > 1 and layerNorm else None
-        #     # self.nm_vf = LayerNorm(vf_dense, mode='node') if vf_conv_out > 1 and layerNorm else None 
+        #     # self.nm_vf = LayerNorm(vf_dense, mode='node') if vf_conv_out > 1 and layerNorm else None
         # else:
         #     self.nm_pi = LayerNorm(pi_conv_out, mode='node') if pi_conv_out > 1 and layerNorm else None
-        #     # self.nm_vf = LayerNorm(vf_conv_out, mode='node') if vf_conv_out > 1 and layerNorm else None 
+        #     # self.nm_vf = LayerNorm(vf_conv_out, mode='node') if vf_conv_out > 1 and layerNorm else None
         # self.norm_mode = norm_mode
-        
+
         # self.focus_idx = None
         # self.focus_score = None
-        
-        appraiser:List = []
+
+        appraiser: List = []
         if transformer:
             # appraiser.append(nn.Conv2d(feature_dim, ceil2pow(feature_dim), kernel_size=1))
             # appraiser.append(activation_fn())
             # appraiser.append(nn.Conv2d(ceil2pow(feature_dim), feature_dim, kernel_size=1))
             # appraiser.append(activation_fn())
-            self.ptrnet = TransformerPtrNet(node_num, edge_index, 
-                                            n_layers=2, d_model=feature_dim, ffn_hidden=feature_dim*2, n_head=4, drop_prob=0.1, layer_norm=True,
-                                            device=device)
-            
+            self.ptrnet = TransformerPtrNet(
+                node_num,
+                edge_index,
+                n_layers=2,
+                d_model=feature_dim,
+                ffn_hidden=feature_dim * 2,
+                n_head=4,
+                drop_prob=0.1,
+                layer_norm=True,
+                device=device,
+            )
+
             appraiser.append(nn.Linear(feature_dim, 1))
             appraiser.append(nn.Tanh())
             self.appraiser = nn.Sequential(*appraiser)
         else:
             self.ptrnet = None
-        
+
     def forward_actor(self, features: torch.Tensor) -> torch.Tensor:
         if len(self.policy_net) > 0:
-           features = self.policy_net(features)
+            features = self.policy_net(features)
         return features
-        
+
     def forward_critic(self, features: torch.Tensor) -> torch.Tensor:
         if len(self.value_net) > 0:
             features = self.value_net(features)
@@ -238,7 +263,7 @@ class CustomPolicyValueNet(MlpExtractor):
                 x_pi = x.transpose(1, 2)
             else:
                 x_pi = x.reshape(x.shape[0], -1, self.node_num, 1)
-            x_pi:torch.Tensor = self.conv_pi(x_pi)
+            x_pi: torch.Tensor = self.conv_pi(x_pi)
             x_pi = x_pi.transpose(1, 2).reshape(x_pi.shape[0], -1)
             # if self.nm_pi is not None:
             #     # x_pi.shape = [batch_size, pi_dense]
@@ -250,11 +275,11 @@ class CustomPolicyValueNet(MlpExtractor):
         else:
             x_pi = x
         return x_pi
-    
+
     def global_pooling(self, x: torch.Tensor) -> torch.Tensor:
         # x.shape=[batch_size, features, node_num, ...
         return torch.mean(x, dim=2, keepdim=True)
-    
+
     def _forward_critic(self, x: torch.Tensor) -> torch.Tensor:
         ## value function
         if self.conv_vf:
@@ -263,7 +288,7 @@ class CustomPolicyValueNet(MlpExtractor):
                 x_vf = x.unsqueeze(-1)
             else:
                 x_vf = x.reshape(x.shape[0], -1, self.node_num, 1)
-            x_vf:torch.Tensor = self.conv_vf(x_vf)
+            x_vf: torch.Tensor = self.conv_vf(x_vf)
             # x_vf.shape=[batch_size, vf_conv_out, node_num, 1]
             x_vf = x_vf.transpose(1, 2).reshape(x_vf.shape[0], -1)
             # if self.nm_vf is not None:
@@ -272,18 +297,20 @@ class CustomPolicyValueNet(MlpExtractor):
             #         x_vf = x_vf.reshape(x_vf.shape[0], -1, self.vf_conv_out)
             #     x_vf = self.nm_vf(x_vf)
             #     x_vf = x_vf.reshape(x_vf.shape[0], -1)
-            # x_vf = self.act_fn(x_vf) 
+            # x_vf = self.act_fn(x_vf)
         else:
             x_vf = x.reshape(x.shape[0], -1)
         return x_vf
-    
-    def forward(self, x:torch.Tensor):
+
+    def forward(self, x: torch.Tensor):
         # expect x.shape = [batch_size,(features, node_num)]
         focus_v = x[:, : -self.addi_features] if self.addi_features > 0 else x
         focus = x[:, : -self.addi_features] if self.addi_features > 0 else x
         if self.gp_vf:
             # gf = self.global_pooling(focus_v.reshape(x.shape[0], -1, self.node_num))
-            focus_v = self.global_pooling(focus_v.reshape(x.shape[0], -1, self.node_num))
+            focus_v = self.global_pooling(
+                focus_v.reshape(x.shape[0], -1, self.node_num)
+            )
         elif self.conv_vf is not None:
             focus_v = focus_v.reshape(focus_v.shape[0], -1, self.node_num)
         if self.ptrnet is not None:
@@ -293,7 +320,7 @@ class CustomPolicyValueNet(MlpExtractor):
                 self.ptrnet.emb.pos_emb.update_device(focus.device)
             focus = self.ptrnet(focus)
             focus = self.appraiser(focus)
-            
+
         # if not vf_only and self.spotlight:
         #     # for focus_vf is not reasonable and deprecated, so if vf_only, we should not cost to focus
         #     # CustomMaskableActorCriticPolicy->predict_values()
@@ -320,11 +347,17 @@ class CustomPolicyValueNet(MlpExtractor):
         #     # only use global pooling for vf
         #     focus_v = gf
 
-        focus = self._forward_actor(focus) # conv
-        focus_v = self._forward_critic(focus_v) # conv
-            
+        focus = self._forward_actor(focus)  # conv
+        focus_v = self._forward_critic(focus_v)  # conv
+
         if self.addi_features > 0:
             # focus = torch.cat((focus.reshape(x.shape[0], -1), x[:, -self.addi_features].unsqueeze(-1)), dim=1)
-            focus_v = torch.cat((focus_v.reshape(x.shape[0], -1), x[:, -self.addi_features].unsqueeze(-1)), dim=1)
-            
+            focus_v = torch.cat(
+                (
+                    focus_v.reshape(x.shape[0], -1),
+                    x[:, -self.addi_features].unsqueeze(-1),
+                ),
+                dim=1,
+            )
+
         return self.forward_actor(focus), self.forward_critic(focus_v)
