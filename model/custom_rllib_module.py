@@ -9,6 +9,8 @@ from gymnasium import spaces
 import numpy as np
 import torch as th
 from torch import nn
+import torch.nn.functional as F
+from ray.rllib.core import Columns
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.connectors.connector_v2 import ConnectorV2
@@ -234,28 +236,115 @@ class MyMaskableTorchRLModule(TorchRLModule, ValueFunctionAPI):
             # device=self.device,
         )
 
+        self._action_net = nn.Linear(self._mlp_extractor.latent_dim_pi, self.action_space.n)
+        self._value_net = nn.Linear(self._mlp_extractor.latent_dim_vf, 1)
+
     @override(TorchRLModule)
     def _forward(self, batch, **kwargs):
-        # Debug: print batch structure
-        print("=" * 50)
-        print("_forward called")
-        print(f"batch type: {type(batch)}")
-        print(f"batch keys: {batch.keys() if hasattr(batch, 'keys') else 'N/A'}")
-        for key, value in batch.items():
-            if isinstance(value, th.Tensor):
-                print(f"  {key}: Tensor shape={value.shape}, dtype={value.dtype}")
-            elif isinstance(value, np.ndarray):
-                print(f"  {key}: ndarray shape={value.shape}, dtype={value.dtype}")
-            else:
-                print(f"  {key}: {type(value)} = {value}")
-        print(f"kwargs: {kwargs}")
-        print("=" * 50)
+        """
+        Forward pass for inference/exploration.
         
-        raise NotImplementedError("Debug: Check the printed batch structure above")
+        Computes actions from observations with optional action masking.
+        Uses pure PyTorch to implement masked action sampling.
+        """
+        obs = batch[Columns.OBS]
+        action_mask = batch.get("action_mask", None)
+
+        # Extract features and get latent representations
+        features = self._extract_features(obs)
+        latent_pi, _ = self._mlp_extractor(features)
+
+        # Get action logits from action network
+        action_logits = self._action_net(latent_pi)
+
+        # Apply action masking: set invalid actions' logits to -inf
+        if action_mask is not None:
+            # Ensure action_mask is a tensor with correct dtype
+            if not isinstance(action_mask, th.Tensor):
+                action_mask = th.tensor(action_mask, dtype=th.float32, device=action_logits.device)
+            # Set invalid actions (mask=0) to very large negative value
+            HUGE_NEG = th.finfo(action_logits.dtype).min
+            action_logits = th.where(
+                action_mask.bool(),
+                action_logits,
+                th.full_like(action_logits, HUGE_NEG),
+            )
+
+        # Sample actions from the masked distribution (exploration)
+        # Use categorical distribution for discrete action space
+        probs = F.softmax(action_logits, dim=-1)
+        actions = th.multinomial(probs, num_samples=1).squeeze(-1)
+
+        # ========== DEBUG: 打印 actions 并终止运行 ==========
+        print("=" * 60)
+        print("[DEBUG] _forward 被 RLlib 调用")
+        print("=" * 60)
+        print(f"obs shape: {obs.shape}")
+        print(f"action_mask: {action_mask}")
+        print(f"action_logits shape: {action_logits.shape}")
+        print(f"action_logits: {action_logits}")
+        print(f"probs: {probs}")
+        print(f"actions: {actions}")
+        print(f"actions shape: {actions.shape}")
+        if action_mask is not None:
+            valid_actions = th.where(action_mask[0] == 1)[0].tolist()
+            print(f"有效动作: {valid_actions}")
+            print(f"选中的动作是否有效: {[action_mask[i, actions[i]].item() == 1 for i in range(len(actions))]}")
+        print("=" * 60)
+        raise SystemExit("[DEBUG] 终止运行以查看 actions 值")
+        # ========== DEBUG END ==========
+
+        return {
+            Columns.ACTIONS: actions,
+        }
 
     @override(TorchRLModule)
     def _forward_train(self, batch, **kwargs):
-        pass
+        """
+        Forward pass for training.
+        
+        Computes action distribution, log probabilities, entropy, and values
+        for PPO loss computation.
+        """
+        obs = batch[Columns.OBS]
+        actions = batch[Columns.ACTIONS]
+        action_mask = batch.get("action_mask", None)
+
+        # Extract features and get latent representations
+        features = self._extract_features(obs)
+        latent_pi, latent_vf = self._mlp_extractor(features)
+
+        # Get action logits from action network
+        action_logits = self._action_net(latent_pi)
+
+        # Apply action masking: set invalid actions' logits to -inf
+        if action_mask is not None:
+            if not isinstance(action_mask, th.Tensor):
+                action_mask = th.tensor(action_mask, dtype=th.float32, device=action_logits.device)
+            HUGE_NEG = th.finfo(action_logits.dtype).min
+            action_logits = th.where(
+                action_mask.bool(),
+                action_logits,
+                th.full_like(action_logits, HUGE_NEG),
+            )
+
+        # Compute log probabilities and entropy
+        log_probs = F.log_softmax(action_logits, dim=-1)
+        action_log_probs = log_probs.gather(dim=-1, index=actions.unsqueeze(-1).long()).squeeze(-1)
+        
+        # Compute entropy: -sum(p * log(p))
+        # probs = F.softmax(action_logits, dim=-1)
+        # entropy = -th.sum(probs * log_probs, dim=-1)
+
+        # Compute values
+        values = self._value_net(latent_vf).squeeze(-1)
+
+        return {
+            Columns.ACTION_DIST_INPUTS: action_logits,
+            Columns.ACTION_LOGP: action_log_probs,
+            # Columns.ENTROPY: entropy,
+            Columns.VF_PREDS: values,
+        }
 
     @override(ValueFunctionAPI)
     def compute_values(
@@ -263,4 +352,16 @@ class MyMaskableTorchRLModule(TorchRLModule, ValueFunctionAPI):
         batch: Dict[str, Any], 
         embeddings: Optional[Any] = None
     ) -> TensorType:
-        pass
+        """
+        Compute value function predictions for given observations.
+        """
+        obs = batch[Columns.OBS]
+        
+        # Extract features and get value latent representation
+        features = self._extract_features(obs)
+        _, latent_vf = self._mlp_extractor(features)
+        
+        # Compute values
+        values = self._value_net(latent_vf).squeeze(-1)
+        
+        return values
