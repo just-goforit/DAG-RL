@@ -18,8 +18,8 @@ from stable_baselines3.common.type_aliases import Schedule
 from model.policy_value import CustomPolicyValueNet
 
 # from model.graph_extractor import GATExtractor, GCNExtractor, SAGEExtractor,
-# from model.graph_extractor import MlpLayer, GNNExtractor
-from model.graph_extractor import MlpLayer
+from model.graph_extractor import MlpLayer, GNNExtractor
+# from model.graph_extractor import MlpLayer
 
 from torch_sparse import SparseTensor
 
@@ -350,7 +350,7 @@ class CustomMaskableActorCriticPolicy(MaskableActorCriticPolicy):
         """
         # Preprocess the observation if needed
         features = self.extract_features(obs)
-        if self.share_features_extractor:
+        if self.share_features_extractor: # default True
             latent_pi, latent_vf = self.mlp_extractor(features)
         else:
             pi_features, vf_features = features
@@ -366,197 +366,197 @@ class CustomMaskableActorCriticPolicy(MaskableActorCriticPolicy):
         return actions, values, log_prob
 
 
-# class CustomGNN(BaseFeaturesExtractor):
-#     """
-#     params
-#     ------
-#     * observation_space: (gym.Space)
-#     * node_features: (int) Number of node features
-#     * features_dim: (int) Number of features extracted.
-#         This corresponds to the number of unit for the last layer.
-#     * gnn_class: (str) GNN model type, GCN/GAT
-#     * edge_index: (np.ndarray) The edge index of graph.
-#     * hidden_features: (int) The hidden features of hidden GCN/GATLayer.
-#     * blocks: (int) The number of GCN/GATLayer.
-#     * dropout: (float) The dropout rate of GCN/GATLayer.
-#     * layerNorm: (bool) Whether to use LayerNorm.
-#     """
+class CustomGNN(BaseFeaturesExtractor):
+    """
+    params
+    ------
+    * observation_space: (gym.Space)
+    * node_features: (int) Number of node features
+    * features_dim: (int) Number of features extracted.
+        This corresponds to the number of unit for the last layer.
+    * gnn_class: (str) GNN model type, GCN/GAT
+    * edge_index: (np.ndarray) The edge index of graph.
+    * hidden_features: (int) The hidden features of hidden GCN/GATLayer.
+    * blocks: (int) The number of GCN/GATLayer.
+    * dropout: (float) The dropout rate of GCN/GATLayer.
+    * layerNorm: (bool) Whether to use LayerNorm.
+    """
 
-#     def __init__(
-#         self,
-#         observation_space: spaces.Dict,
-#         edge_index: np.ndarray,
-#         node_num: int,
-#         node_features: int = 4,  # max(IN, MID, OUT) node features
-#         addi_features: int = 0,
-#         gnn_class: str = "SAGE",
-#         features_dim: int = 64,
-#         dropout: float = 0.0,
-#         #  hidden_features: int=16,
-#         #  blocks: int=0,
-#         activation_fn: nn.Module = nn.ReLU,
-#         #  net_arch:list=[],
-#         #  layerNorm: bool=False,
-#         #  norm_mode: str='node',
-#         sp_tensor: bool = False,
-#         device: Union[th.device, str] = "cpu",
-#     ):
-#         super().__init__(observation_space, features_dim)
-#         self.device = device  # model training device, edge_index device
-#         self.node_num = node_num
-#         self.edge_index = th.from_numpy(edge_index).to(device)
-#         self.sp_tensor = sp_tensor
-#         if self.sp_tensor:
-#             # self.edge_index_csr for spmm_ext
-#             # self.edge_index_sparse_t for Pyg
-#             self.update_sp_edge_index()
-#             self.adj = None
-#         else:
-#             # self.adj
-#             self.update_edge_index2adj()
-#             self.edge_index_csr = None
-#             self.edge_index_sparse_t = None
+    def __init__(
+        self,
+        observation_space: spaces.Dict,
+        edge_index: np.ndarray,
+        node_num: int,
+        node_features: int = 4,  # max(IN, MID, OUT) node features
+        addi_features: int = 0,
+        gnn_class: str = "SAGE",
+        features_dim: int = 64,
+        dropout: float = 0.0,
+        #  hidden_features: int=16,
+        #  blocks: int=0,
+        activation_fn: nn.Module = nn.ReLU,
+        #  net_arch:list=[],
+        #  layerNorm: bool=False,
+        #  norm_mode: str='node',
+        sp_tensor: bool = False,
+        device: Union[th.device, str] = "cpu",
+    ):
+        super().__init__(observation_space, features_dim)
+        self.device = device  # model training device, edge_index device
+        self.node_num = node_num
+        self.edge_index = th.from_numpy(edge_index).to(device)
+        self.sp_tensor = sp_tensor
+        if self.sp_tensor:
+            # self.edge_index_csr for spmm_ext
+            # self.edge_index_sparse_t for Pyg
+            self.update_sp_edge_index()
+            self.adj = None
+        else:
+            # self.adj
+            self.update_edge_index2adj()
+            self.edge_index_csr = None
+            self.edge_index_sparse_t = None
 
-#         self.node_features = node_features
-#         self.addi_features = addi_features
-#         self.gnn_class = gnn_class
-#         if isinstance(gnn_class, str):
-#             self.gnn_class = self._get_gnn_from_name(gnn_class)
+        self.node_features = node_features
+        self.addi_features = addi_features
+        self.gnn_class = gnn_class
+        if isinstance(gnn_class, str):
+            self.gnn_class = self._get_gnn_from_name(gnn_class)
 
-#         if addi_features > 0:
-#             self.lin_addi = nn.Sequential(
-#                 nn.Linear(addi_features, addi_features), nn.LeakyReLU()
-#             )
-#         else:
-#             self.lin_addi = None
+        if addi_features > 0:
+            self.lin_addi = nn.Sequential(
+                nn.Linear(addi_features, addi_features), nn.LeakyReLU()
+            )
+        else:
+            self.lin_addi = None
 
-#         self.gnn = self.gnn_class(
-#             in_features=node_features,  # node_nums * node_features
-#             out_features=features_dim,  # pass to policy/value
-#             activation_fn=activation_fn,
-#             dropout=dropout,
-#             sp_tensor=sp_tensor,
-#         )
+        self.gnn = self.gnn_class(
+            in_features=node_features,  # node_nums * node_features
+            out_features=features_dim,  # pass to policy/value
+            activation_fn=activation_fn,
+            dropout=dropout,
+            sp_tensor=sp_tensor,
+        )
 
-#     def _get_gnn_from_name(self, type_name: str):
-#         # gnn_models = {
-#         #     "GAT": GATExtractor,
-#         #     "GCN": GCNExtractor,
-#         #     "SAGE": SAGEExtractor,
-#         # }
-#         # gnn_models = {
-#         #     "SAGE": GNNExtractor,
-#         # }
-#         gnn_types = ["GAT", "SAGE"]
-#         if type_name in gnn_types:
-#             return GNNExtractor
-#         else:
-#             raise ValueError(f"Policy {type_name} unknown")
+    def _get_gnn_from_name(self, type_name: str):
+        # gnn_models = {
+        #     "GAT": GATExtractor,
+        #     "GCN": GCNExtractor,
+        #     "SAGE": SAGEExtractor,
+        # }
+        # gnn_models = {
+        #     "SAGE": GNNExtractor,
+        # }
+        gnn_types = ["GAT", "SAGE"]
+        if type_name in gnn_types:
+            return GNNExtractor
+        else:
+            raise ValueError(f"Policy {type_name} unknown")
 
-#     def update_edge_index2adj(self, edge_index=None):
-#         if edge_index is None:
-#             edge_index = self.edge_index
-#         if isinstance(edge_index, np.ndarray):
-#             self.edge_index = th.from_numpy(edge_index).to(self.device)
-#         self.adj = th.zeros(
-#             (self.node_num, self.node_num),
-#             dtype=th.float32,
-#             device=self.device,
-#             requires_grad=False,
-#         )
-#         # self.adj[edge_index[0], edge_index[1]] = 1.0 # successor -> self
-#         self.adj[edge_index[1], edge_index[0]] = 1.0  # predecessor -> self
-#         # self.adj[th.arange(self.node_num), th.arange(self.node_num)] = 1.0 # self -> self
-#         sum_ = self.adj.sum(dim=1, keepdim=True)
-#         sum_[sum_ < 1.0] = 1.0  # avoid div zero
-#         self.adj = self.adj / sum_
-#         # self.adj[th.arange(self.node_num), th.arange(self.node_num)] = 0.0 # self -> self
+    def update_edge_index2adj(self, edge_index=None):
+        if edge_index is None:
+            edge_index = self.edge_index
+        if isinstance(edge_index, np.ndarray):
+            self.edge_index = th.from_numpy(edge_index).to(self.device)
+        self.adj = th.zeros(
+            (self.node_num, self.node_num),
+            dtype=th.float32,
+            device=self.device,
+            requires_grad=False,
+        )
+        # self.adj[edge_index[0], edge_index[1]] = 1.0 # successor -> self
+        self.adj[edge_index[1], edge_index[0]] = 1.0  # predecessor -> self
+        # self.adj[th.arange(self.node_num), th.arange(self.node_num)] = 1.0 # self -> self
+        sum_ = self.adj.sum(dim=1, keepdim=True)
+        sum_[sum_ < 1.0] = 1.0  # avoid div zero
+        self.adj = self.adj / sum_
+        # self.adj[th.arange(self.node_num), th.arange(self.node_num)] = 0.0 # self -> self
 
-#     def _get_csr_value(self, edge_index: th.Tensor, device: str = "cpu"):
-#         sorted_, _ = th.sort(edge_index[1])
-#         _, counts = th.unique(sorted_, return_counts=True)
-#         e_value = th.cat(
-#             [
-#                 th.full(size=(count,), fill_value=1.0 / value, dtype=th.float32)
-#                 for value, count in zip(counts, counts)
-#             ],
-#             dim=0,
-#         ).to(device)
-#         return e_value
+    def _get_csr_value(self, edge_index: th.Tensor, device: str = "cpu"):
+        sorted_, _ = th.sort(edge_index[1])
+        _, counts = th.unique(sorted_, return_counts=True)
+        e_value = th.cat(
+            [
+                th.full(size=(count,), fill_value=1.0 / value, dtype=th.float32)
+                for value, count in zip(counts, counts)
+            ],
+            dim=0,
+        ).to(device)
+        return e_value
 
-#     def edge_index_sparse(self, edge_index: th.Tensor, device: str = "cpu"):
-#         edge_index_ = edge_index.to(th.int64).to(device)
-#         _sp = SparseTensor(
-#             row=edge_index_[1],
-#             col=edge_index_[0],
-#             sparse_sizes=(self.node_num, self.node_num),
-#         )
-#         return _sp  # _sp.csr()
+    def edge_index_sparse(self, edge_index: th.Tensor, device: str = "cpu"):
+        edge_index_ = edge_index.to(th.int64).to(device)
+        _sp = SparseTensor(
+            row=edge_index_[1],
+            col=edge_index_[0],
+            sparse_sizes=(self.node_num, self.node_num),
+        )
+        return _sp  # _sp.csr()
 
-#     def update_sp_edge_index(self, edge_index=None):
-#         """
-#         update edge_index to edge_index_sparse_t & edge_index_csr
-#         """
-#         if edge_index is None:
-#             edge_index = self.edge_index
-#         if isinstance(edge_index, np.ndarray):
-#             self.edge_index = th.from_numpy(edge_index).to(self.device)
-#         self.edge_index_sparse_t = self.edge_index_sparse(edge_index, self.device)
-#         row_off, col_ind, _ = self.edge_index_sparse_t.csr()
-#         e_v = self._get_csr_value(edge_index, self.device)
-#         self.edge_index_csr = (
-#             e_v,
-#             row_off.to(dtype=th.int32),
-#             col_ind.to(dtype=th.int32),
-#             th.arange(edge_index.shape[1], dtype=th.int32, device=self.device),
-#         )
+    def update_sp_edge_index(self, edge_index=None):
+        """
+        update edge_index to edge_index_sparse_t & edge_index_csr
+        """
+        if edge_index is None:
+            edge_index = self.edge_index
+        if isinstance(edge_index, np.ndarray):
+            self.edge_index = th.from_numpy(edge_index).to(self.device)
+        self.edge_index_sparse_t = self.edge_index_sparse(edge_index, self.device)
+        row_off, col_ind, _ = self.edge_index_sparse_t.csr()
+        e_v = self._get_csr_value(edge_index, self.device)
+        self.edge_index_csr = (
+            e_v,
+            row_off.to(dtype=th.int32),
+            col_ind.to(dtype=th.int32),
+            th.arange(edge_index.shape[1], dtype=th.int32, device=self.device),
+        )
 
-#     def forward(self, observations: th.Tensor) -> th.Tensor:
-#         assert observations.dim() == 2
-#         # if self.conv: # weighted-sum of history state
-#         #     _obs_state = self.conv(_obs_state)
-#         #     # _obs_state.shape = [batch, 1, node_num, node_features]
-#         #     obs_addi = self.conv(obs_addi)
-#         #     # obs_addi.shape = [batch, 1, addi_features, 1]
+    def forward(self, observations: th.Tensor) -> th.Tensor:
+        assert observations.dim() == 2
+        # if self.conv: # weighted-sum of history state
+        #     _obs_state = self.conv(_obs_state)
+        #     # _obs_state.shape = [batch, 1, node_num, node_features]
+        #     obs_addi = self.conv(obs_addi)
+        #     # obs_addi.shape = [batch, 1, addi_features, 1]
 
-#         # observations.shape=(observations.shape[0], self.node_num * self.node_features + ADD_FEATURE)
-#         _obs_addi = None
-#         if self.addi_features > 0:
-#             _obs_addi = observations[:, 0 : self.addi_features].reshape(
-#                 observations.shape[0], self.addi_features
-#             )
-#         # obs_addi.shape = [batch, addi_features]
+        # observations.shape=(observations.shape[0], self.node_num * self.node_features + ADD_FEATURE)
+        _obs_addi = None
+        if self.addi_features > 0:
+            _obs_addi = observations[:, 0 : self.addi_features].reshape(
+                observations.shape[0], self.addi_features
+            )
+        # obs_addi.shape = [batch, addi_features]
 
-#         _obs_state = observations[:, self.addi_features :].reshape(
-#             observations.shape[0], self.node_num, self.node_features
-#         )
-#         # _obs_state.shape = [batch, node_num, node_features]
+        _obs_state = observations[:, self.addi_features :].reshape(
+            observations.shape[0], self.node_num, self.node_features
+        )
+        # _obs_state.shape = [batch, node_num, node_features]
 
-#         if self.device != observations.device:
-#             self.device = observations.device
-#             self.edge_index = self.edge_index.to(observations.device)
-#             if self.sp_tensor:
-#                 self.update_sp_edge_index()
-#             else:
-#                 self.update_edge_index2adj()
-#         if self.gnn_class == "SAGE":
-#             obs_state: th.Tensor = self.gnn(
-#                 _obs_state, self.edge_index_csr if self.sp_tensor else self.adj
-#             )  # use spmm_ext
-#         else:
-#             obs_state: th.Tensor = self.gnn(
-#                 _obs_state, self.edge_index_sparse_t if self.sp_tensor else self.adj
-#             )  # use pyg
+        if self.device != observations.device:
+            self.device = observations.device
+            self.edge_index = self.edge_index.to(observations.device)
+            if self.sp_tensor:
+                self.update_sp_edge_index()
+            else:
+                self.update_edge_index2adj()
+        if self.gnn_class == "SAGE":
+            obs_state: th.Tensor = self.gnn(
+                _obs_state, self.edge_index_csr if self.sp_tensor else self.adj
+            )  # use spmm_ext
+        else:
+            obs_state: th.Tensor = self.gnn(
+                _obs_state, self.edge_index_sparse_t if self.sp_tensor else self.adj
+            )  # use pyg
 
-#         obs_state = obs_state.transpose(-1, -2).reshape(obs_state.shape[0], -1)
-#         # obs_state.shape=[batch, (features_dim, node_nums)]
-#         obs = obs_state
-#         if self.addi_features > 0:
-#             obs_addi = _obs_addi
-#             # obs_addi = self.lin_addi(_obs_addi)
-#             obs = th.cat((obs_state, obs_addi), dim=1)
-#         # obs.shape=[batch, -1]
-#         return obs
+        obs_state = obs_state.transpose(-1, -2).reshape(obs_state.shape[0], -1)
+        # obs_state.shape=[batch, (features_dim, node_nums)]
+        obs = obs_state
+        if self.addi_features > 0:
+            obs_addi = _obs_addi
+            # obs_addi = self.lin_addi(_obs_addi)
+            obs = th.cat((obs_state, obs_addi), dim=1)
+        # obs.shape=[batch, -1]
+        return obs
 
 
 class CustomMlp(BaseFeaturesExtractor):

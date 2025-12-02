@@ -16,7 +16,7 @@ from torch_geometric.nn.dense.linear import Linear
 from torch_geometric.typing import Adj, OptPairTensor, Size, SparseTensor
 from torch_geometric.utils import spmm
 
-from spmm_ext import gspmm_src_mul_e_sum
+# from spmm_ext import gspmm_src_mul_e_sum
 
 class SAGEConv(MessagePassing):
     r"""The GraphSAGE operator from the `"Inductive Representation Learning on
@@ -173,59 +173,59 @@ class SAGEConv(MessagePassing):
         return (f'{self.__class__.__name__}({self.in_channels}, '
                 f'{self.out_channels}, aggr={self.aggr})')
 
-class optSAGEConv(nn.Module):
-    # use adjecent matrix (zeros filled)
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 root_weight: bool = True,
-                 project: bool = False,
-                 normalize: bool = False,
-                 bias: bool = True):
-        super(optSAGEConv, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.root_weight = root_weight
-        self.project = project
-        self.normalize = normalize
-        self.bias = bias
+# class optSAGEConv(nn.Module):
+#     # use adjecent matrix (zeros filled)
+#     def __init__(self,
+#                  in_channels,
+#                  out_channels,
+#                  root_weight: bool = True,
+#                  project: bool = False,
+#                  normalize: bool = False,
+#                  bias: bool = True):
+#         super(optSAGEConv, self).__init__()
+#         self.in_channels = in_channels
+#         self.out_channels = out_channels
+#         self.root_weight = root_weight
+#         self.project = project
+#         self.normalize = normalize
+#         self.bias = bias
         
-        self.w_aggr = Linear(in_channels, out_channels, bias=bias)
-        self.w = Linear(in_channels, out_channels, bias=False)
+#         self.w_aggr = Linear(in_channels, out_channels, bias=bias)
+#         self.w = Linear(in_channels, out_channels, bias=False)
     
-        self.reset_parameters()
+#         self.reset_parameters()
         
-    def reset_parameters(self):
-        self.w_aggr.reset_parameters()
-        self.w.reset_parameters()
+#     def reset_parameters(self):
+#         self.w_aggr.reset_parameters()
+#         self.w.reset_parameters()
         
-    def forward(self, x:torch.Tensor, edge_index:Union[torch.Tensor, Tuple]):
-        # expect x.shape=[B, N, C]
-        # expect edge_index.shape=[N, N]
-        if x.dim() == 2:
-            x = x.unsqueeze(0)
-        b = x.shape[0]
-        n = x.shape[1] # node num
+#     def forward(self, x:torch.Tensor, edge_index:Union[torch.Tensor, Tuple]):
+#         # expect x.shape=[B, N, C]
+#         # expect edge_index.shape=[N, N]
+#         if x.dim() == 2:
+#             x = x.unsqueeze(0)
+#         b = x.shape[0]
+#         n = x.shape[1] # node num
         
-        con_x = x.transpose(0, 1).reshape(n, -1)
+#         con_x = x.transpose(0, 1).reshape(n, -1)
         
-        if isinstance(edge_index, tuple):
-            # edge_index = (edge_vale, row_offset, col_indices, edge_indices)
-            out = gspmm_src_mul_e_sum(n, con_x, edge_index[0], edge_index[1], edge_index[2], edge_index[3])
-        else:
-            # adj
-            out = edge_index @ con_x # out.shape = [N, B*C]
+#         if isinstance(edge_index, tuple):
+#             # edge_index = (edge_vale, row_offset, col_indices, edge_indices)
+#             out = gspmm_src_mul_e_sum(n, con_x, edge_index[0], edge_index[1], edge_index[2], edge_index[3])
+#         else:
+#             # adj
+#             out = edge_index @ con_x # out.shape = [N, B*C]
             
-        out = out.reshape(n, b, -1).transpose(0, 1)
-        # out.shape = [B, N, C]
-        out = self.w_aggr(out)
-        root = self.w(x)
-        out = out + root
+#         out = out.reshape(n, b, -1).transpose(0, 1)
+#         # out.shape = [B, N, C]
+#         out = self.w_aggr(out)
+#         root = self.w(x)
+#         out = out + root
         
-        if self.normalize:
-            out = F.normalize(out, p=2., dim=-1)
+#         if self.normalize:
+#             out = F.normalize(out, p=2., dim=-1)
 
-        return out
+#         return out
 
 class customGATConv(nn.Module):
     def __init__(self, 
@@ -274,45 +274,46 @@ class customGATConv(nn.Module):
 
         return out    
 
-# class GNNExtractor(nn.Module):
-#     def __init__(self, 
-#                  in_features, 
-#                  out_features, 
-#                  gnn_class: str='SAGE',
-#                  activation_fn: nn.Module=nn.ReLU,
-#                  dropout:float=0.0,
-#                  sp_tensor:bool = False):
-#         super(GNNExtractor, self).__init__()
+class GNNExtractor(nn.Module):
+    def __init__(self, 
+                 in_features, 
+                 out_features, 
+                 gnn_class: str='SAGE',
+                 activation_fn: nn.Module=nn.ReLU,
+                 dropout:float=0.0,
+                 sp_tensor:bool = False):
+        super(GNNExtractor, self).__init__()
         
-#         avaliable_gnn = ['SAGE', 'GAT']
-#         if gnn_class not in avaliable_gnn:
-#             raise ValueError(f'{gnn_class} is supported GNN class, available: {avaliable_gnn}')
+        avaliable_gnn = ['SAGE', 'GAT']
+        if gnn_class not in avaliable_gnn:
+            raise ValueError(f'{gnn_class} is supported GNN class, available: {avaliable_gnn}')
         
-#         self.dropout = dropout
-#         self.out_features = out_features
-#         self.sp_tensor = sp_tensor
+        self.dropout = dropout
+        self.out_features = out_features
+        self.sp_tensor = sp_tensor
         
-#         # self.conv1 = SAGEConv(in_features, out_features)  # batched PyG
-#         if gnn_class == 'SAGE':
-#             self.conv1 = optSAGEConv(in_features, out_features) # batched spmm
-#         else:
-#             self.conv1 = customGATConv(in_features, out_features)
+        # self.conv1 = SAGEConv(in_features, out_features)  # batched PyG
+        if gnn_class == 'SAGE':
+            # self.conv1 = optSAGEConv(in_features, out_features) # batched spmm
+            self.conv1 = customGATConv(in_features, out_features)
+        else:
+            self.conv1 = customGATConv(in_features, out_features)
             
-#         act_fn = activation_fn()
-#         if isinstance(act_fn, torch.nn.modules.activation.ReLU):
-#             self.act_fn = F.relu
-#         elif isinstance(act_fn, torch.nn.modules.activation.Tanh):
-#             self.act_fn = F.tanh
-#         elif isinstance(act_fn, torch.nn.modules.activation.GELU):
-#             self.act_fn = F.gelu
-#         else:
-#             raise ValueError('Wrong activation function type')
+        act_fn = activation_fn()
+        if isinstance(act_fn, torch.nn.modules.activation.ReLU):
+            self.act_fn = F.relu
+        elif isinstance(act_fn, torch.nn.modules.activation.Tanh):
+            self.act_fn = F.tanh
+        elif isinstance(act_fn, torch.nn.modules.activation.GELU):
+            self.act_fn = F.gelu
+        else:
+            raise ValueError('Wrong activation function type')
         
-#     def forward(self, x:torch.Tensor, edge_index:Union[torch.Tensor, Tuple, SparseTensor]):
-#         x = self.conv1(x, edge_index)
-#         x = self.act_fn(x)
-#         x = F.dropout(x, p=self.dropout, training=self.training)
-#         return x
+    def forward(self, x:torch.Tensor, edge_index:Union[torch.Tensor, Tuple, SparseTensor]):
+        x = self.conv1(x, edge_index)
+        x = self.act_fn(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        return x
         
 class MlpLayer(nn.Module):
     """
