@@ -191,8 +191,10 @@ class RedBluePebbleGameEnv(gym.Env):
             info["terminal_observation"] = self._get_obs() if obs is None else obs
         info["TimeLimit.truncated"] = truncated and not terminated
         # Add action_mask for RLlib compatibility
-        if self.cached_action_mask is not None:
-            info["action_mask"] = self.action_masks()
+        # 确保 action_mask 始终存在且是最新的
+        # if self.wraped_cached_action_mask is None:
+        #     self._get_valid_action_mask()
+        info["action_mask"] = self.action_masks()
         return info
 
     def _get_obs(self):
@@ -277,10 +279,10 @@ class RedBluePebbleGameEnv(gym.Env):
         #                 AGENT_OUT_NODE_ACTS[idx % AGENT_OUT_NODE_ACTION_SIZE])
         # return (idx // AGENT_IN_NODE_ACTION_SIZE, AGENT_IN_NODE_ACTS[idx % AGENT_IN_NODE_ACTION_SIZE])
 
-        if self.cached_action_mask is None:
-            # RLlib/other frameworks may call `step()` without requesting action masks first,
-            # ensure we always have the latest valid action mask cached.
-            self._get_valid_action_mask()
+        # if self.cached_action_mask is None:
+        #     # RLlib/other frameworks may call `step()` without requesting action masks first,
+        #     # ensure we always have the latest valid action mask cached.
+        #     self._get_valid_action_mask()
         assert self.cached_action_mask is not None
         node_actions = self.cached_action_mask[idx]
         if idx >= self.g.input_num:
@@ -290,6 +292,45 @@ class RedBluePebbleGameEnv(gym.Env):
                     np.argmax(node_actions[AGENT_MID_NODE_ACTION_MASK])
                 ]
                 if node_actions[act] == False:
+                    # 调试：在 S>0 时，出现行内全 False 或选择的动作被判定为 False，打印全局状态
+                    if self.S != 0:
+                        print("=" * 80)
+                        print("[DEBUG] agent_action_decode: invalid chosen action when S>0")
+                        print(f"steps: {self.steps}")
+                        print(f"S: {self.S} / cache_limit: {self.operator_cache_limit}")
+                        print(f"idx(node_id): {idx}")
+                        print(f"node_actions row: {node_actions}")
+                        print(f"valid_action_map[idx]: {self.valid_action_map[idx]}")
+                        print("-" * 40)
+                        print(f"any_cached: {np.any(self.state.x[:, NODE_CACHED] > 0)}")
+                        print(f"any_memed:  {np.any(self.state.x[:, NODE_MEMED] > 0)}")
+                        print(f"any_computed_outputs: {np.any(self.state.x[self.g.input_num:self.g.input_num+self.g.output_num, NODE_COMPUTED] > 0)}")
+                        print(f"del_lock_enable: {self.del_lock_enable}, del_lock_any: {np.any(self.del_lock)}, del_lock_all: {np.all(self.del_lock) if self.del_lock.size>0 else False}")
+                        print(f"load_lock_enable: {self.load_lock_enable}, load_lock_any: {np.any(self.load_lock)}")
+                        print("-" * 40)
+                        if self.cached_action_mask is not None:
+                            cam = self.cached_action_mask
+                            print(f"cached_action_mask any: {np.any(cam)}")
+                            print(f"col LOAD any:   {np.any(cam[:, LOAD])}")
+                            print(f"col STORE any:  {np.any(cam[:, STORE])}")
+                            print(f"col DELETE any: {np.any(cam[:, DELETE])}")
+                            print(f"col COMPUTE any:{np.any(cam[:, COMPUTE])}")
+                        else:
+                            print("cached_action_mask is None")
+                        print("-" * 40)
+                        # 打印当前节点的前驱/后继与其状态，辅助判断 COMPUTE 条件
+                        preds = self.get_predecessors(idx)
+                        succs = self.get_successors(idx)
+                        print(f"predecessors({len(preds)}): {preds}")
+                        for p in preds:
+                            st = self.state.x[p]
+                            print(f"  pred {p} state: CACHED={st[NODE_CACHED]}, MEMED={st[NODE_MEMED]}, COMPUTED={st[NODE_COMPUTED]}, CONTRIB={st[NODE_CONTRIBUTED]}")
+                        print(f"successors({len(succs)}): {succs}")
+                        for s in succs:
+                            st = self.state.x[s]
+                            print(f"  succ {s} state: CACHED={st[NODE_CACHED]}, MEMED={st[NODE_MEMED]}, COMPUTED={st[NODE_COMPUTED]}, CONTRIB={st[NODE_CONTRIBUTED]}")
+                        print("=" * 80)
+
                     assert (
                         self.S == 0
                         and node_actions[DELETE] == True
@@ -562,6 +603,25 @@ class RedBluePebbleGameEnv(gym.Env):
 
         self.wraped_cached_action_mask = self._warp_action_mask(tmp)
 
+        # 调试：当整张掩码为全 False 时，输出全局状态
+        if not np.any(tmp):
+            print("#" * 80)
+            print("[DEBUG] _get_valid_action_mask produced ALL-FALSE mask")
+            print(f"steps: {self.steps}")
+            print(f"S: {self.S} / cache_limit: {self.operator_cache_limit}")
+            print(f"del_lock_enable: {self.del_lock_enable}, del_lock_any: {np.any(self.del_lock)}, del_lock_all: {np.all(self.del_lock) if self.del_lock.size>0 else False}")
+            print(f"load_lock_enable: {self.load_lock_enable}, load_lock_any: {np.any(self.load_lock)}, action_truncate: {self.action_truncate}")
+            print(f"any_cached: {np.any(self.state.x[:, NODE_CACHED] > 0)}")
+            print(f"any_memed:  {np.any(self.state.x[:, NODE_MEMED] > 0)}")
+            print(f"inputs LOAD flags any: {np.any(self.valid_action_map[:self.g.input_num, LOAD])}")
+            print(f"mid COMPUTE flags any: {np.any(self.valid_action_map[self.g.input_num+self.g.output_num:, COMPUTE])}")
+            print(f"outputs COMPUTE flags any: {np.any(self.valid_action_map[self.g.input_num:self.g.input_num+self.g.output_num, COMPUTE])}")
+            print(f"col LOAD any:   {np.any(tmp[:, LOAD])}")
+            print(f"col STORE any:  {np.any(tmp[:, STORE])}")
+            print(f"col DELETE any: {np.any(tmp[:, DELETE])}")
+            print(f"col COMPUTE any:{np.any(tmp[:, COMPUTE])}")
+            print("#" * 80)
+
         return self.wraped_cached_action_mask
 
     def _has_valid_action(self):
@@ -612,15 +672,19 @@ class RedBluePebbleGameEnv(gym.Env):
         self.wraped_cached_action_mask = None
 
         observation = self._get_obs()
-        # 计算 action_mask 以便在 info 中包含它（RLlib 兼容性）
-        self._get_valid_action_mask()
-        info = self._get_info()
+        # # 计算 action_mask 以便在 info 中包含它（RLlib 兼容性）
+        # # self._get_valid_action_mask()
+        # info = self._get_info()
 
         if self.load_lock_enable:
             self.load_lock[:] = False
 
         if self.del_lock_enable:
             self.del_lock[:] = False
+
+        # 计算 action_mask 以便在 info 中包含它（RLlib 兼容性）
+        # self._get_valid_action_mask()
+        info = self._get_info()
 
         return observation, info
 
@@ -934,7 +998,7 @@ class RedBluePebbleGameEnv(gym.Env):
         #     self.steps += 1
         #     return self._get_obs(), 0, False, False, {"error":"invalid action"} # just for unmasked env check
 
-        action = self._action_decode(action)
+        action = self._action_decode(action) # 从选择的节点中解码出 节点ID 和 动作
 
         node_id, act = action
 
@@ -995,7 +1059,38 @@ class RedBluePebbleGameEnv(gym.Env):
                     & (self.state.x[predecessors, NODE_CACHED] > 0)
                     & (self.state.x[predecessors, NODE_CONTRIBUTED] < 1)
                 )
-                assert nums > 0
+                
+                if nums <= 0:
+                    print("=" * 60)
+                    print("[ERROR] nums <= 0 detected!")
+                    print("=" * 60)
+                    print(f"node_id: {node_id}")
+                    print(f"act: {ACTS[act]}")
+                    print(f"steps: {self.steps}")
+                    print(f"S (cache size): {self.S}")
+                    print(f"predecessors: {predecessors}")
+                    print(f"nums: {nums}")
+                    print("-" * 40)
+                    print("Predecessor states:")
+                    for pred in predecessors:
+                        print(f"  pred {pred}:")
+                        print(f"    NODE_COMPUTED: {self.state.x[pred, NODE_COMPUTED]}")
+                        print(f"    NODE_CACHED: {self.state.x[pred, NODE_CACHED]}")
+                        print(f"    NODE_CONTRIBUTED: {self.state.x[pred, NODE_CONTRIBUTED]}")
+                        print(f"    NODE_MEMED: {self.state.x[pred, NODE_MEMED]}")
+                        computed = self.state.x[pred, NODE_COMPUTED] > 0
+                        cached = self.state.x[pred, NODE_CACHED] > 0
+                        not_contributed = self.state.x[pred, NODE_CONTRIBUTED] < 1
+                        print(f"    满足条件: COMPUTED={computed}, CACHED={cached}, NOT_CONTRIBUTED={not_contributed}")
+                    print("-" * 40)
+                    print(f"Output node state: {self.state.x[node_id]}")
+                    print(f"compute_counts[node_id]: {self.compute_counts[node_id]}")
+                    print(f"valid_action_map[node_id]: {self.valid_action_map[node_id]}")
+                    print(f"cached_action_mask[node_id]: {self.cached_action_mask[node_id] if self.cached_action_mask is not None else 'None'}")
+                    print("=" * 60)
+                
+                assert nums > 0, f"nums={nums} should be > 0, node_id={node_id}, predecessors={predecessors}"
+
                 # self.state.x[node_id, NODE_COMPUTED] -= nums
                 self.compute_counts[node_id] += nums
                 self.state.x[node_id, NODE_COMPUTED] = float(
